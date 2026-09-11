@@ -1,0 +1,6 @@
+add_executable(loomcore_bench latency_bench.cpp)
+target_link_libraries(loomcore_bench PRIVATE loomcore::core)
+target_compile_definitions(loomcore_bench PRIVATE LOOMCORE_PROJECT_ROOT="${CMAKE_SOURCE_DIR}")
+if(MSVC)
+    target_compile_options(loomcore_bench PRIVATE /W4)
+endif()

@@ -1,0 +1,6 @@
+# Runtime dependency of the compiled Python extension itself (numpy is
+# used for every tensor crossing the Python/C++ boundary — see
+# bindings/python/loomcore_py.cpp). pybind11 is a build-time dependency
+# only (see bindings/python/CMakeLists.txt) and isn't needed to just use
+# the already-built extension.
+numpy>=1.24

@@ -1,0 +1,11 @@
+# Python side is tooling/model-prep only — the runtime itself is C++.
+# See scripts/prepare_all_models.py for the one-shot pipeline these support,
+# and bindings/python/requirements.txt for the (separate, much lighter)
+# runtime dependency of the Python bindings themselves.
+onnx>=1.16
+onnxruntime>=1.19
+onnxscript>=0.1
+torch>=2.2
+transformers>=4.40
+huggingface_hub>=0.23
+numpy>=1.24

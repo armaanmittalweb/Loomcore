@@ -1,0 +1,37 @@
+{
+  "_comment": "See docs/ARCHITECTURE.md 'Graph config schema'. Paths are resolved relative to the process's working directory; run_example chdir's to the repo root first so this file can be launched from anywhere.",
+  "log_file": "logs/loomcore.jsonl",
+  "scheduler": {
+    "cpu_threads": 0,
+    "gpu_sim_threads": 2,
+    "gpu_sim_fixed_overhead_ms": 1.5,
+    "gpu_sim_bytes_per_ms": 250000.0
+  },
+  "nodes": [
+    {
+      "id": "mobilenet",
+      "backend": "CPU",
+      "priority": 5,
+      "max_batch_size": 4,
+      "batch_window_ms": 8,
+      "depends_on": [],
+      "variants": [
+        { "precision": "FP32", "model_path": "models/mobilenetv2.onnx" },
+        { "precision": "INT8", "model_path": "models/mobilenetv2.int8.onnx" }
+      ]
+    },
+    {
+      "id": "bert_tiny",
+      "backend": "GPU_SIM",
+      "priority": 3,
+      "max_batch_size": 4,
+      "batch_window_ms": 12,
+      "depends_on": ["mobilenet"],
+      "confidence_source": "mobilenet",
+      "variants": [
+        { "precision": "FP32", "model_path": "models/bert_tiny.onnx" },
+        { "precision": "INT8", "model_path": "models/bert_tiny.int8.onnx" }
+      ]
+    }
+  ]
+}
