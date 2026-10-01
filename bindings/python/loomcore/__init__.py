@@ -23,7 +23,8 @@ def _find_build_bin_dir():
             candidates.append(os.path.join(env, "bin", config))
 
     here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, "..", ".."))
+    # here = <repo>/bindings/python/loomcore, so the repo root is three levels up.
+    repo_root = os.path.abspath(os.path.join(here, "..", "..", ".."))
     for build_name in ("build", "out/build"):
         for config in configs:
             candidates.append(os.path.join(repo_root, build_name, "bin", config))
@@ -45,14 +46,25 @@ if _bin_dir:
 try:
     from _loomcore import (  # noqa: E402  (path must be adjusted first)
         Backend,
+        BulkheadPolicy,
+        CircuitBreakerPolicy,
         CompositeRouter,
+        ConfidenceGatePolicy,
+        DeadlineExceededError,
+        JobRejectedError,
         LatencyBudgetPolicy,
         LoadAwareBackendPolicy,
+        LoomcoreError,
+        PlannedPrecisionPolicy,
         Precision,
         RoutingContext,
         RoutingDecision,
         RoutingPolicy,
         Runtime,
+        RuntimeOptions,
+        SchedulerConfig,
+        WordPieceTokenizer,
+        export_perfetto_trace,
     )
 except ImportError as exc:  # pragma: no cover - exercised only in a broken env
     raise ImportError(
@@ -67,10 +79,21 @@ __all__ = [
     "Backend",
     "Precision",
     "Runtime",
+    "RuntimeOptions",
+    "SchedulerConfig",
     "RoutingContext",
     "RoutingDecision",
     "RoutingPolicy",
     "LatencyBudgetPolicy",
     "LoadAwareBackendPolicy",
+    "ConfidenceGatePolicy",
+    "PlannedPrecisionPolicy",
+    "CircuitBreakerPolicy",
+    "BulkheadPolicy",
     "CompositeRouter",
+    "WordPieceTokenizer",
+    "export_perfetto_trace",
+    "LoomcoreError",
+    "JobRejectedError",
+    "DeadlineExceededError",
 ]

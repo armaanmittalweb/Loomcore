@@ -11,7 +11,9 @@
 // docs/ARCHITECTURE.md "Python bindings" for the GIL-handling details
 // that make it safe to call back into Python from scheduler worker
 // threads.
+#include "loomcore/perfetto_export.h"
 #include "loomcore/runtime.h"
+#include "loomcore/tokenizer.h"
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
@@ -99,6 +101,28 @@ py::dict jobResultToDict(const JobResult& r) {
 // Python-callable adapters for NodeInputBinder / ConfidenceExtractor
 // ---------------------------------------------------------------------------
 
+// A Python callable held by a C++ std::function must only have its
+// reference count touched while holding the GIL. The std::function
+// wrappers below are copied (NodeConfig is a value type; buildSnapshot
+// copies it into the Graph and every ModelNode) with the GIL released, and
+// a retired graph snapshot is destroyed on Runtime's own "graveyard"
+// thread after Runtime.reload_graph (see docs/ARCHITECTURE.md
+// "Hot-reloading a graph") -- a thread that never holds the GIL. Capturing
+// the py::function by value would inc/dec its refcount on those threads.
+// Capturing it through a shared_ptr instead makes every copy a plain C++
+// refcount bump, and the deleter takes the GIL for the one real
+// Py_DECREF. (If the interpreter is already finalizing, the object is
+// deliberately leaked rather than touched.)
+using PyFunctionRef = std::shared_ptr<py::function>;
+
+PyFunctionRef holdWithGil(py::function fn) {
+    return PyFunctionRef(new py::function(std::move(fn)), [](py::function* f) {
+        if (Py_IsInitialized() == 0) return;
+        py::gil_scoped_acquire gil;
+        delete f;
+    });
+}
+
 // The Python binder signature is:
 //   fn(graph_inputs: Dict[str, np.ndarray], upstream_outputs: Dict[str, List[np.ndarray]])
 //       -> List[Tuple[str, np.ndarray]]
@@ -106,7 +130,8 @@ py::dict jobResultToDict(const JobResult& r) {
 // side match them to the model's real input names exactly the way a
 // C++-authored NodeInputBinder does (see loomcore::reorderToExpected in
 // scheduler.cpp) regardless of the order the Python author builds them in.
-NodeInputBinder makePyBinder(py::function fn) {
+NodeInputBinder makePyBinder(py::function py_fn) {
+    PyFunctionRef fn = holdWithGil(std::move(py_fn));
     return [fn](const NodeExecutionContext& ctx) -> std::vector<NamedTensor> {
         py::gil_scoped_acquire gil;
 
@@ -125,7 +150,7 @@ NodeInputBinder makePyBinder(py::function fn) {
             }
         }
 
-        py::list result = fn(graph_inputs, upstream).cast<py::list>();
+        py::list result = (*fn)(graph_inputs, upstream).cast<py::list>();
         std::vector<NamedTensor> out;
         out.reserve(result.size());
         for (auto item : result) {
@@ -140,12 +165,13 @@ NodeInputBinder makePyBinder(py::function fn) {
 }
 
 // Python signature: fn(upstream_outputs: List[np.ndarray]) -> Optional[float]
-ConfidenceExtractor makePyConfidence(py::function fn) {
+ConfidenceExtractor makePyConfidence(py::function py_fn) {
+    PyFunctionRef fn = holdWithGil(std::move(py_fn));
     return [fn](const std::vector<NamedTensor>& upstream) -> std::optional<float> {
         py::gil_scoped_acquire gil;
         py::list lst;
         for (const auto& t : upstream) lst.append(tensorToNumpy(t));
-        py::object result = fn(lst);
+        py::object result = (*fn)(lst);
         if (result.is_none()) return std::nullopt;
         return result.cast<float>();
     };
@@ -213,6 +239,54 @@ public:
     }
 };
 
+// ---------------------------------------------------------------------------
+// Shared argument handling for Runtime.load_graph / Runtime.reload_graph
+// (identical signatures, mirroring the C++ API).
+// ---------------------------------------------------------------------------
+struct GraphArgs {
+    std::map<std::string, NodeInputBinder> binders;
+    std::map<std::string, ConfidenceExtractor> confidence;
+    std::shared_ptr<IRoutingPolicy> router;
+    RuntimeOptions options;
+};
+
+GraphArgs toGraphArgs(const py::dict& binders, const py::object& confidence_extractors, const py::object& router,
+                      const py::object& options) {
+    GraphArgs a;
+    for (auto item : binders) {
+        a.binders[item.first.cast<std::string>()] = makePyBinder(item.second.cast<py::function>());
+    }
+    if (!confidence_extractors.is_none()) {
+        for (auto item : confidence_extractors.cast<py::dict>()) {
+            a.confidence[item.first.cast<std::string>()] = makePyConfidence(item.second.cast<py::function>());
+        }
+    }
+    if (!router.is_none()) a.router = router.cast<std::shared_ptr<IRoutingPolicy>>();
+    if (!options.is_none()) a.options = options.cast<RuntimeOptions>();
+    return a;
+}
+
+py::dict nodeConfigToDict(const NodeConfig& n) {
+    py::dict d;
+    d["id"] = n.id;
+    d["backend"] = std::string(toString(n.backend));
+    d["priority"] = n.priority;
+    d["max_batch_size"] = n.max_batch_size;
+    d["batch_window_ms"] = n.batch_window_ms;
+    d["depends_on"] = n.depends_on;
+    py::list variants;
+    for (const auto& v : n.variants) {
+        py::dict vd;
+        vd["precision"] = std::string(toString(v.precision));
+        vd["model_path"] = v.model_path;
+        variants.append(vd);
+    }
+    d["variants"] = variants;
+    d["confidence_source"] = n.confidence_source_node.empty() ? py::object(py::none()) : py::object(py::str(n.confidence_source_node));
+    d["quality_weight"] = n.quality_weight;
+    return d;
+}
+
 } // namespace
 
 PYBIND11_MODULE(_loomcore, m) {
@@ -225,6 +299,41 @@ PYBIND11_MODULE(_loomcore, m) {
     py::enum_<Precision>(m, "Precision")
         .value("FP32", Precision::FP32)
         .value("INT8", Precision::INT8);
+
+    // Typed errors, so a caller can tell "admission control never started
+    // my job" from "the deadline reaper cancelled it" from any other
+    // failure. Registered base-first: pybind11 tries translators in reverse
+    // registration order, so the two subclasses are matched before their
+    // base. LoomcoreError subclasses RuntimeError, which is what every
+    // Loomcore exception surfaced as before these existed.
+    auto& loomcore_error = py::register_exception<LoomcoreError>(m, "LoomcoreError", PyExc_RuntimeError);
+    py::register_exception<JobRejectedError>(m, "JobRejectedError", loomcore_error.ptr());
+    py::register_exception<DeadlineExceededError>(m, "DeadlineExceededError", loomcore_error.ptr());
+
+    // The scheduler's opt-in deadline features (docs/ARCHITECTURE.md
+    // "Deadlines and resilience"); all default off, as in C++.
+    py::class_<SchedulerConfig>(m, "SchedulerConfig")
+        .def(py::init<>())
+        .def_readwrite("cpu_threads", &SchedulerConfig::cpu_threads)
+        .def_readwrite("gpu_sim_threads", &SchedulerConfig::gpu_sim_threads)
+        .def_readwrite("gpu_sim_fixed_overhead_ms", &SchedulerConfig::gpu_sim_fixed_overhead_ms)
+        .def_readwrite("gpu_sim_bytes_per_ms", &SchedulerConfig::gpu_sim_bytes_per_ms)
+        .def_readwrite("aging_ms_per_priority_point", &SchedulerConfig::aging_ms_per_priority_point)
+        .def_readwrite("enable_admission_control", &SchedulerConfig::enable_admission_control)
+        .def_readwrite("enable_precision_planning", &SchedulerConfig::enable_precision_planning)
+        .def_readwrite("enable_deadline_cancellation", &SchedulerConfig::enable_deadline_cancellation)
+        .def_readwrite("deadline_reaper_poll_ms", &SchedulerConfig::deadline_reaper_poll_ms)
+        .def_readwrite("use_edf_scoring", &SchedulerConfig::use_edf_scoring);
+
+    // Note: a graph config's own "scheduler" block (cpu_threads,
+    // gpu_sim_*) overrides the matching fields here, exactly as it does
+    // for a C++ caller (see buildSnapshot in runtime.cpp).
+    py::class_<RuntimeOptions>(m, "RuntimeOptions")
+        .def(py::init<>())
+        .def_readwrite("log_file", &RuntimeOptions::log_file)
+        .def_readwrite("log_to_stdout", &RuntimeOptions::log_to_stdout)
+        .def_readwrite("intra_op_threads_per_variant", &RuntimeOptions::intra_op_threads_per_variant)
+        .def_readwrite("scheduler", &RuntimeOptions::scheduler);
 
     py::class_<PyRoutingContext>(m, "RoutingContext")
         .def_readonly("job_id", &PyRoutingContext::job_id)
@@ -270,6 +379,24 @@ PYBIND11_MODULE(_loomcore, m) {
         m, "LoadAwareBackendPolicy")
         .def(py::init<>());
 
+    py::class_<ConfidenceGatePolicy, IRoutingPolicy, std::shared_ptr<ConfidenceGatePolicy>>(m, "ConfidenceGatePolicy")
+        .def(py::init<float>(), py::arg("skip_above"),
+             "Skips a node once the ConfidenceExtractor registered for it (load_graph's "
+             "confidence_extractors) reports a value >= skip_above.");
+
+    py::class_<PlannedPrecisionPolicy, IRoutingPolicy, std::shared_ptr<PlannedPrecisionPolicy>>(
+        m, "PlannedPrecisionPolicy")
+        .def(py::init<>(),
+             "Applies the scheduler's DAG-wide knapsack precision plan; needs "
+             "SchedulerConfig.enable_precision_planning (or enable_admission_control).");
+
+    py::class_<CircuitBreakerPolicy, IRoutingPolicy, std::shared_ptr<CircuitBreakerPolicy>>(m, "CircuitBreakerPolicy")
+        .def(py::init<double, size_t, double>(), py::arg("error_rate_threshold"), py::arg("min_samples"),
+             py::arg("cooldown_ms"));
+
+    py::class_<BulkheadPolicy, IRoutingPolicy, std::shared_ptr<BulkheadPolicy>>(m, "BulkheadPolicy")
+        .def(py::init<size_t>(), py::arg("max_concurrent"));
+
     py::class_<CompositeRouter, IRoutingPolicy, std::shared_ptr<CompositeRouter>>(m, "CompositeRouter")
         .def(py::init<>())
         // keep_alive<1, 2>: a Python policy object stored only via the
@@ -287,31 +414,54 @@ PYBIND11_MODULE(_loomcore, m) {
         .def(
             "load_graph",
             [](Runtime& self, const std::string& config_path, py::dict binders, py::object confidence_extractors,
-               py::object router) {
-                std::map<std::string, NodeInputBinder> cpp_binders;
-                for (auto item : binders) {
-                    cpp_binders[item.first.cast<std::string>()] = makePyBinder(item.second.cast<py::function>());
-                }
-                std::map<std::string, ConfidenceExtractor> cpp_confidence;
-                if (!confidence_extractors.is_none()) {
-                    for (auto item : confidence_extractors.cast<py::dict>()) {
-                        cpp_confidence[item.first.cast<std::string>()] =
-                            makePyConfidence(item.second.cast<py::function>());
-                    }
-                }
-                std::shared_ptr<IRoutingPolicy> cpp_router;
-                if (!router.is_none()) cpp_router = router.cast<std::shared_ptr<IRoutingPolicy>>();
-
+               py::object router, py::object options) {
+                GraphArgs a = toGraphArgs(binders, confidence_extractors, router, options);
                 py::gil_scoped_release release; // loading walks the graph and loads ONNX sessions; no Python needed
-                self.loadGraph(config_path, cpp_binders, cpp_confidence, cpp_router);
+                self.loadGraph(config_path, std::move(a.binders), std::move(a.confidence), std::move(a.router),
+                               std::move(a.options));
             },
             py::arg("config_path"), py::arg("binders"), py::arg("confidence_extractors") = py::none(),
-            py::arg("router") = py::none(),
+            py::arg("router") = py::none(), py::arg("options") = py::none(),
             // keep_alive<1, 5>: self=1, ... , router=5th argument — same
             // rationale as CompositeRouter::add's keep_alive (see there).
             py::keep_alive<1, 5>(),
             "Load a DAG from a JSON config (see examples/graph_config.json). `binders` maps node id -> "
-            "callable(graph_inputs: dict, upstream_outputs: dict) -> list[(name, ndarray)].")
+            "callable(graph_inputs: dict, upstream_outputs: dict) -> list[(name, ndarray)]. `options` is an "
+            "optional RuntimeOptions (log destination, scheduler flags).")
+        .def(
+            "reload_graph",
+            [](Runtime& self, const std::string& config_path, py::dict binders, py::object confidence_extractors,
+               py::object router, py::object options) {
+                GraphArgs a = toGraphArgs(binders, confidence_extractors, router, options);
+                py::gil_scoped_release release; // builds the new snapshot (ONNX sessions) off the GIL, then swaps
+                self.reloadGraph(config_path, std::move(a.binders), std::move(a.confidence), std::move(a.router),
+                                 std::move(a.options));
+            },
+            py::arg("config_path"), py::arg("binders"), py::arg("confidence_extractors") = py::none(),
+            py::arg("router") = py::none(), py::arg("options") = py::none(), py::keep_alive<1, 5>(),
+            "Hot-swap the whole graph (same arguments as load_graph) under live traffic: jobs already in flight "
+            "finish on the old snapshot, jobs submitted afterwards see the new one, none is dropped. Safe to call "
+            "while other Python threads are inside run().")
+        .def(
+            "graph",
+            [](Runtime& self) {
+                // Copy everything out under one snapshot read: holding the
+                // C++ reference across a concurrent reload is unsafe (see
+                // Runtime::graph()'s header comment).
+                py::list nodes;
+                py::list topo;
+                py::list sinks;
+                const Graph& g = self.graph();
+                for (const auto& n : g.nodes()) nodes.append(nodeConfigToDict(n));
+                for (const auto& id : g.topoOrder()) topo.append(id);
+                for (const auto& id : g.sinkNodes()) sinks.append(id);
+                py::dict d;
+                d["nodes"] = nodes;
+                d["topo_order"] = topo;
+                d["sinks"] = sinks;
+                return d;
+            },
+            "The currently loaded graph as plain data: {nodes: [...], topo_order: [...], sinks: [...]}.")
         .def(
             "run",
             [](Runtime& self, py::dict inputs, int priority, double time_budget_ms) {
@@ -340,4 +490,28 @@ PYBIND11_MODULE(_loomcore, m) {
         .def(
             "recent_logs", [](Runtime& self, size_t n) { return self.recentLogs(n); }, py::arg("n") = 100,
             "Returns up to the last n structured log lines (JSON strings) — parse with Python's json module.");
+
+    m.def(
+        "export_perfetto_trace",
+        [](const std::string& jsonl_path, const std::string& output_json_path) {
+            py::gil_scoped_release release;
+            return exportPerfettoTrace(jsonl_path, output_json_path);
+        },
+        py::arg("jsonl_path"), py::arg("output_json_path"),
+        "Convert a Loomcore JSON-lines log into Chrome Trace Event Format JSON (for ui.perfetto.dev). Returns the "
+        "number of trace events written. See loomcore/perfetto_export.h.");
+
+    py::class_<WordPieceTokenizer>(m, "WordPieceTokenizer")
+        .def(py::init<const std::string&, size_t>(), py::arg("vocab_path"), py::arg("max_seq_len") = 32)
+        .def(
+            "encode",
+            [](const WordPieceTokenizer& self, const std::string& text) {
+                py::dict d;
+                for (const auto& t : self.encodeToTensors(text)) d[py::str(t.name)] = tensorToNumpy(t);
+                return d;
+            },
+            py::arg("text"),
+            "Encode one phrase to {input_ids, attention_mask, token_type_ids}, each an int64 array of shape "
+            "[1, max_seq_len] (the C++ tokenizer the reference pipeline uses; see loomcore/tokenizer.h for scope).")
+        .def_property_readonly("vocab_size", &WordPieceTokenizer::vocabSize);
 }

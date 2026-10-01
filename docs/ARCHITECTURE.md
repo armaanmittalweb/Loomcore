@@ -640,10 +640,25 @@ a trace costs nothing during the run being traced): each simulated
 backend lane becomes its own track with a duration bar per real
 `ModelVariant::run()` call (from `batch_flushed` events, sized to their
 measured `latency_ms`), routing decisions become instant markers on a
-separate "Router" track, and each job's *observed* sequence of
-`node_scheduled` events becomes a connecting flow arrow — read from the
-log's actual timestamps, not reconstructed from the `Graph`'s static
-topology, so what you see is what that specific run actually did.
+separate "Router" track, and each job's *observed* path through the DAG
+becomes connecting flow arrows, from the bar that ran a node for that job
+to the bar that ran its next node — read from the log's actual
+timestamps, not reconstructed from the `Graph`'s static topology, so what
+you see is what that specific run actually did.
+
+Two details of the log shape the exporter has to account for, both
+covered by `tests/test_perfetto_export.cpp`. `batch_flushed` is logged
+when a batch *finishes* (its `LogEvent` is built after the run is timed),
+so a bar starts `latency_ms` before that event's timestamp; an earlier
+revision used the timestamp as the start and drew every bar one full
+duration late. And a batch serving several jobs logs `job_id` as
+`"(N jobs)"`; the exporter recovers which jobs it served from the
+`node_completed` events the scheduler logs for each of them immediately
+afterwards (same node, lane, precision and `latency_ms`), lists them in
+the bar's `args.jobs`, and anchors each flow arrow inside the two bars it
+connects, on their own lane tracks, which is what Perfetto needs to bind
+a flow to its slices (the earlier revision put them on a track with no
+slices at all, so they never rendered).
 `tools/trace_export.cpp` is the CLI wrapper (`loomcore_trace_export
 logs/loomcore.jsonl trace.json`); `tests/test_perfetto_export.cpp` checks
 the output is structurally valid Trace Event Format against a small
