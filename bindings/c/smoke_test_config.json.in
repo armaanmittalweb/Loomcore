@@ -1,0 +1,9 @@
+{
+  "_comment": "Config for bindings/c/smoke_test.c. Paths are baked in absolute at CMake configure time (see bindings/c/CMakeLists.txt's configure_file) so the smoke test doesn't need to chdir, unlike the C++ examples which resolve paths relative to LOOMCORE_PROJECT_ROOT.",
+  "nodes": [
+    { "id": "a", "backend": "CPU", "max_batch_size": 1, "depends_on": [],
+      "variants": [ { "precision": "FP32", "model_path": "@CMAKE_SOURCE_DIR@/assets/test_identity.onnx" } ] },
+    { "id": "b", "backend": "CPU", "max_batch_size": 1, "depends_on": ["a"],
+      "variants": [ { "precision": "FP32", "model_path": "@CMAKE_SOURCE_DIR@/assets/test_double.onnx" } ] }
+  ]
+}

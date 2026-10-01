@@ -2,7 +2,9 @@
 
 **A C++ runtime that loads and schedules multiple ONNX models concurrently
 as a dependency graph — not one model, one inference — with an agentic
-routing layer deciding which model to invoke at runtime.**
+routing layer deciding which model to invoke at runtime, deadlines it can
+actually enforce, and a graph it can hot-swap under live traffic with
+zero jobs dropped.**
 
 Loomcore exists to demonstrate a multi-model execution *orchestrator*, not
 a model. Two small, off-the-shelf, un-trained ONNX models
@@ -10,8 +12,14 @@ a model. Two small, off-the-shelf, un-trained ONNX models
 graph purely as a vehicle for the orchestration layer: a DAG scheduler
 with priority + dynamic batching across simulated heterogeneous backends,
 a pluggable runtime router that picks which model variant/precision/path
-to invoke per job, and a quantized inference path with a measured FP32
-vs. INT8 latency comparison.
+to invoke per job, a quantized inference path with a measured FP32
+vs. INT8 latency comparison, admission control and real deadline
+cancellation, a DAG-wide precision-downgrade planner (a genuine 0/1
+knapsack, not a dressed-up greedy), a circuit breaker and bulkhead for
+node-level resilience, and an RCU-style graph hot-swap proven under
+continuous concurrent load. **[docs/CLAIMS.md](docs/CLAIMS.md) is the
+short version of this README: every claim here, next to the exact
+command that checks it yourself.**
 
 ```
 Image ──▶ [mobilenet: FP32/INT8, CPU]──▶ argmax + label ──▶ [bert_tiny: FP32/INT8, GPU_SIM]──▶ 128-dim text embedding
@@ -30,16 +38,41 @@ Image ──▶ [mobilenet: FP32/INT8, CPU]──▶ argmax + label ──▶ [b
 | 4. Python bindings + basic router logic | `bindings/python/`, `examples/run_example.py` |
 
 Plus, because the brief asked for the whole system, not just the four
-milestones: a chain-of-responsibility **router** with three independently
-unit-tested policies (latency-budget precision fallback, load-aware
-backend balancing, confidence-gated skip — see
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#router)); **structured
-JSON-lines logging** of every scheduling decision and per-node latency;
-a from-scratch **WordPiece tokenizer** (no NLP dependency) so the
-MobileNetV2 → bert_tiny handoff is a real, meaningful pipeline instead of
-two unrelated models bolted together; and a from-scratch **JPEG/PNG
-decode → resize → normalize** path (via stb_image) so the example runs on
-an actual photo, not just synthetic tensors.
+milestones: a chain-of-responsibility **router** with seven independently
+unit-tested policies — the original three (latency-budget precision
+fallback, load-aware backend balancing, confidence-gated skip), plus a
+DAG-wide precision planner, a circuit breaker, and a bulkhead (see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#router)); **structured,
+asynchronous JSON-lines logging** of every scheduling decision and
+per-node latency, off the scheduler's own lane threads; a from-scratch
+**WordPiece tokenizer** (no NLP dependency) so the MobileNetV2 →
+bert_tiny handoff is a real, meaningful pipeline instead of two unrelated
+models bolted together; a from-scratch **JPEG/PNG decode → resize →
+normalize** path (via stb_image) so the example runs on an actual photo,
+not just synthetic tensors; a **C API** consumable from plain C, and a
+**Perfetto trace exporter** that turns any run's log into a timeline you
+can drop onto `ui.perfetto.dev`.
+
+Beyond the original brief, four further capabilities were added
+end-to-end — real feature, real tests, real docs, not a stub:
+
+- **Deadlines that bind, not just advise**: admission control that
+  rejects a job outright when it's judged undeliverable, real
+  cancellation of an in-flight ONNX Runtime call once a budget expires,
+  and a knapsack-based DAG-wide precision-downgrade plan (see
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#deadlines-and-resilience)).
+- **Resilience policies** — a proper three-state circuit breaker and a
+  per-node concurrency bulkhead — that needed zero scheduler changes to
+  add, only two small `MetricsRegistry` extensions.
+- **Zero-downtime graph hot-swap**: `Runtime::reloadGraph` swaps the
+  entire graph/model/scheduler set under live traffic with no job ever
+  dropped, delayed, or handed torn state (see
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#hot-reloading-a-graph) and
+  `examples/reload_demo.cpp`).
+- **A real installable package**: `cmake --install` plus an exported
+  CMake config, verified by a from-scratch `find_package(Loomcore)`
+  consumer in `examples/consumer/` that never touches this repo's source
+  tree.
 
 ## Architecture, in one paragraph
 
@@ -72,17 +105,20 @@ python scripts/prepare_all_models.py        # downloads/exports/quantizes both m
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64      # or: -G Ninja on Linux/macOS
 cmake --build build --config RelWithDebInfo --parallel
 
-ctest --test-dir build -C RelWithDebInfo --output-on-failure   # 27 test cases / 148 assertions
+ctest --test-dir build -C RelWithDebInfo --output-on-failure   # 47 test cases / 444 assertions
 
 ./build/bin/RelWithDebInfo/loomcore_example examples/sample.jpg
 ./build/bin/RelWithDebInfo/loomcore_bench
+./build/bin/RelWithDebInfo/loomcore_reload_demo      # hot-swaps the graph 6x under continuous load
+./build/bin/RelWithDebInfo/loomcore_trace_export logs/loomcore.jsonl trace.json   # drop onto ui.perfetto.dev
 
 export LOOMCORE_BUILD_DIR=$PWD/build
 python examples/run_example.py
 ```
 
 Full instructions, options, and troubleshooting:
-[docs/BUILD.md](docs/BUILD.md).
+[docs/BUILD.md](docs/BUILD.md). Every claim above, as a runnable command:
+[docs/CLAIMS.md](docs/CLAIMS.md).
 
 ### What you'll see
 
@@ -119,14 +155,18 @@ scheduling event:
 ## Repository layout
 
 ```
-include/loomcore/     Public API (Runtime, Graph, Scheduler, Router, ModelNode, Logger, Metrics, Tokenizer, ...)
+include/loomcore/     Public C++ API (Runtime, Graph, Scheduler, Router, ModelNode, Planner, Logger, Metrics, Tokenizer, ...)
+                       plus c_api.h — a second, independent extern "C" surface (see docs/ARCHITECTURE.md "C API")
 src/                   Implementation of the above — builds into loomcore_core (.dll / .so)
 bindings/python/       pybind11 extension + thin Python package (see bindings/python/README.md)
-examples/              graph_config.json + the C++ and Python reference-pipeline demos
+bindings/c/            Plain-C smoke test proving c_api.h is a real, separately-consumable surface
+examples/              graph_config.json, the C++ and Python reference-pipeline demos, the hot-swap
+                       demo (reload_demo.cpp), and a from-scratch find_package(Loomcore) consumer
+tools/                 loomcore_trace_export: JSONL log -> Perfetto/Chrome Trace Event Format
 benchmarks/            FP32 vs INT8 latency benchmark
 tests/                 doctest unit + scheduler-integration tests (hermetic: tiny fixture ONNX graphs, no downloads)
 scripts/               Model download/export/quantization pipeline (Python, build-time only)
-docs/                  ARCHITECTURE.md, BUILD.md, BENCHMARKS.md
+docs/                  ARCHITECTURE.md, BUILD.md, BENCHMARKS.md, CLAIMS.md
 ```
 
 ## Why these design choices
@@ -152,6 +192,21 @@ docs/                  ARCHITECTURE.md, BUILD.md, BENCHMARKS.md
   `loomcore::Environment`/`ModelVariant`, so the benchmark and any future
   consumer never need to touch ONNX Runtime headers directly — a real
   library-boundary decision, not just "it compiles."
+- **New scheduler behavior ships opt-in, not on by default.** Admission
+  control, deadline cancellation, precision planning, and EDF lane
+  scoring are all `SchedulerConfig` flags defaulting to `false`: layering
+  genuinely new, more invasive machinery onto a scheduler that already
+  worked should never silently change what an existing caller observes.
+  See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#deadlines-and-resilience).
+- **A concurrency bug found by testing under real load, not asserted
+  away.** The first draft of the graph hot-swap passed a naive
+  "reload-then-assert" test and crashed the moment a stress test kept
+  submitting jobs *through* a reload — a lane worker thread ended up
+  joining itself. The fix (a deferred-teardown "graveyard" thread) and
+  the test that caught it are both described in
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#hot-reloading-a-graph) —
+  left in as the honest record of what real concurrent testing is for,
+  not smoothed over.
 
 ## License
 

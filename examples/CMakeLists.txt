@@ -20,3 +20,13 @@ target_compile_definitions(loomcore_example PRIVATE
 if(MSVC)
     target_compile_options(loomcore_example PRIVATE /W4)
 endif()
+
+# Proves the RCU graph hot-swap (docs/ARCHITECTURE.md "Hot-reloading a
+# graph") under real concurrent load — see reload_demo.cpp's own header
+# comment. Needs the real reference models, same as loomcore_example.
+add_executable(loomcore_reload_demo reload_demo.cpp)
+target_link_libraries(loomcore_reload_demo PRIVATE loomcore::core)
+target_compile_definitions(loomcore_reload_demo PRIVATE LOOMCORE_PROJECT_ROOT="${CMAKE_SOURCE_DIR}")
+if(MSVC)
+    target_compile_options(loomcore_reload_demo PRIVATE /W4)
+endif()

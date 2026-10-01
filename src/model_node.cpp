@@ -2,6 +2,7 @@
 
 #include <onnxruntime_cxx_api.h>
 
+#include <atomic>
 #include <cstring>
 
 #if defined(_WIN32)
@@ -21,10 +22,10 @@ const NamedTensor& NodeExecutionContext::upstreamTensor(const std::string& node_
         throw LoomcoreError("NodeExecutionContext: no upstream outputs available");
     }
     auto it = upstream_outputs->find(node_id);
-    if (it == upstream_outputs->end()) {
+    if (it == upstream_outputs->end() || !it->second) {
         throw LoomcoreError("NodeExecutionContext: upstream node '" + node_id + "' has no recorded output");
     }
-    for (const auto& t : it->second) {
+    for (const auto& t : *it->second) {
         if (t.name == tensor_name) return t;
     }
     throw LoomcoreError("NodeExecutionContext: upstream node '" + node_id + "' has no tensor named '" +
@@ -36,10 +37,10 @@ const NamedTensor& NodeExecutionContext::upstreamFirst(const std::string& node_i
         throw LoomcoreError("NodeExecutionContext: no upstream outputs available");
     }
     auto it = upstream_outputs->find(node_id);
-    if (it == upstream_outputs->end() || it->second.empty()) {
+    if (it == upstream_outputs->end() || !it->second || it->second->empty()) {
         throw LoomcoreError("NodeExecutionContext: upstream node '" + node_id + "' produced no outputs");
     }
-    return it->second.front();
+    return it->second->front();
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +120,31 @@ NamedTensor fromOrtValue(const std::string& name, Ort::Value& v) {
 } // namespace
 
 // ---------------------------------------------------------------------------
+// CancellationToken
+// ---------------------------------------------------------------------------
+
+// Wraps one Ort::RunOptions: SetTerminate()/UnsetTerminate() are documented
+// as safe to call from a thread other than the one inside Run(), which is
+// exactly the usage pattern here (a scheduler-owned deadline reaper calling
+// requestCancel() while a lane worker is inside ModelVariant::run()).
+struct CancellationToken::Impl {
+    Ort::RunOptions run_options;
+    std::atomic<bool> cancelled{false};
+};
+
+CancellationToken::CancellationToken() : impl_(std::make_unique<Impl>()) {}
+CancellationToken::~CancellationToken() = default;
+
+void CancellationToken::requestCancel() {
+    impl_->cancelled.store(true, std::memory_order_release);
+    impl_->run_options.SetTerminate();
+}
+
+bool CancellationToken::cancelled() const { return impl_->cancelled.load(std::memory_order_acquire); }
+
+void* CancellationToken::nativeHandle() const { return &impl_->run_options; }
+
+// ---------------------------------------------------------------------------
 // ModelVariant
 // ---------------------------------------------------------------------------
 
@@ -163,7 +189,7 @@ ModelVariant::~ModelVariant() = default;
 ModelVariant::ModelVariant(ModelVariant&&) noexcept = default;
 ModelVariant& ModelVariant::operator=(ModelVariant&&) noexcept = default;
 
-std::vector<NamedTensor> ModelVariant::run(const std::vector<NamedTensor>& inputs) const {
+std::vector<NamedTensor> ModelVariant::run(const std::vector<NamedTensor>& inputs, CancellationToken* cancel) const {
     if (inputs.size() != input_names_.size()) {
         throw LoomcoreError("ModelVariant::run: expected " + std::to_string(input_names_.size()) +
                              " inputs, got " + std::to_string(inputs.size()));
@@ -178,8 +204,25 @@ std::vector<NamedTensor> ModelVariant::run(const std::vector<NamedTensor>& input
     ort_inputs.reserve(inputs.size());
     for (const auto& t : inputs) ort_inputs.push_back(toOrtValue(impl_->mem_info, t));
 
-    auto ort_outputs = impl_->session->Run(Ort::RunOptions{nullptr}, in_names.data(), ort_inputs.data(),
-                                            ort_inputs.size(), out_names.data(), out_names.size());
+    // If a cancellation token is bound, run with *its* Ort::RunOptions
+    // (an already-cancelled token has typically already called
+    // SetTerminate(), so ORT will abort this run essentially immediately)
+    // so a concurrent requestCancel() from another thread can abort this
+    // call in flight. Otherwise use a fresh, never-cancelled RunOptions —
+    // identical to the pre-cancellation-support behavior.
+    Ort::RunOptions local_opts;
+    Ort::RunOptions* opts = cancel ? reinterpret_cast<Ort::RunOptions*>(cancel->nativeHandle()) : &local_opts;
+
+    std::vector<Ort::Value> ort_outputs;
+    try {
+        ort_outputs = impl_->session->Run(*opts, in_names.data(), ort_inputs.data(), ort_inputs.size(),
+                                           out_names.data(), out_names.size());
+    } catch (const Ort::Exception& ex) {
+        if (cancel && cancel->cancelled()) {
+            throw LoomcoreError("ModelVariant::run: cancelled (deadline exceeded): " + std::string(ex.what()));
+        }
+        throw;
+    }
 
     std::vector<NamedTensor> results;
     results.reserve(ort_outputs.size());

@@ -85,10 +85,13 @@ add_library(loomcore_core SHARED
     src/model_node.cpp
     src/metrics.cpp
     src/logger.cpp
+    src/planner.cpp
     src/router.cpp
     src/scheduler.cpp
     src/runtime.cpp
     src/tokenizer.cpp
+    src/c_api.cpp
+    src/perfetto_export.cpp
 )
 add_library(loomcore::core ALIAS loomcore_core)
 
@@ -128,11 +131,57 @@ add_custom_command(TARGET loomcore_core POST_BUILD
 )
 
 # ---------------------------------------------------------------------------
+# Installable package (see docs/CLAIMS.md #14 and examples/consumer/):
+# `cmake --install` then a downstream `find_package(Loomcore REQUIRED)`
+# against that install tree — not merely "it builds in this repo's own
+# CMake tree", which is the much weaker claim vendoring the source (the
+# only consumption path before this) would leave you with.
+# ---------------------------------------------------------------------------
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+install(TARGETS loomcore_core
+    EXPORT LoomcoreTargets
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+)
+install(DIRECTORY include/loomcore DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+# ONNX Runtime is a PRIVATE link dependency (nothing in Loomcore's public
+# headers exposes it — loomcore/environment.h), but the installed
+# loomcore_core.dll/.so still needs it on disk for the OS loader to find
+# at a consumer's run time, same as the in-tree copy_if_different above.
+install(FILES "$<TARGET_FILE:onnxruntime>" DESTINATION "${CMAKE_INSTALL_BINDIR}")
+
+install(EXPORT LoomcoreTargets
+    FILE LoomcoreTargets.cmake
+    NAMESPACE loomcore::
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/Loomcore"
+)
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/LoomcoreConfigVersion.cmake"
+    VERSION "${PROJECT_VERSION}"
+    COMPATIBILITY SameMajorVersion
+)
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/LoomcoreConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/LoomcoreConfig.cmake"
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/Loomcore"
+)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/LoomcoreConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/LoomcoreConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/Loomcore"
+)
+
+# ---------------------------------------------------------------------------
 # Subprojects
 # ---------------------------------------------------------------------------
 if(LOOMCORE_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+    add_subdirectory(bindings/c)
 endif()
 
 if(LOOMCORE_BUILD_EXAMPLES)
@@ -146,6 +195,8 @@ endif()
 if(LOOMCORE_BUILD_PYTHON_BINDINGS)
     add_subdirectory(bindings/python)
 endif()
+
+add_subdirectory(tools)
 
 # ---------------------------------------------------------------------------
 # Summary

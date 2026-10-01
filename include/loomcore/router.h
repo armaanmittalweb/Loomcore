@@ -11,8 +11,11 @@
 // rather than a black box.
 #pragma once
 
+#include <atomic>
 #include <functional>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -20,6 +23,7 @@
 #include "loomcore/export.h"
 #include "loomcore/metrics.h"
 #include "loomcore/model_node.h"
+#include "loomcore/planner.h"
 #include "loomcore/types.h"
 
 namespace loomcore {
@@ -41,6 +45,14 @@ struct RoutingContext {
     // Outputs already produced upstream in this job, if the node has a
     // ConfidenceExtractor registered (see NodeConfig::confidence).
     const std::vector<NamedTensor>* upstream_confidence_source = nullptr;
+
+    // Set by the scheduler once per job (only when a time budget was given
+    // and enough metrics history exists — see PrecisionPlan::has_estimate)
+    // to the DAG-wide critical-path knapsack plan from loomcore/planner.h.
+    // PlannedPrecisionPolicy is the only built-in policy that reads this;
+    // it is exposed on the context (rather than kept scheduler-private) so
+    // a custom policy can also read or override it.
+    const PrecisionPlan* precision_plan = nullptr;
 };
 
 struct RoutingDecision {
@@ -100,6 +112,87 @@ public:
 
 private:
     float skip_above_;
+};
+
+// Looks up ctx.precision_plan (see RoutingContext above) for this node and,
+// if the plan chose to downgrade it, returns that decision. Unlike
+// LatencyBudgetPolicy's fixed per-call threshold, the plan behind this was
+// computed once, DAG-wide, by solving a knapsack over which critical-path
+// nodes to downgrade — see loomcore/planner.h for the full rationale. Put
+// this *before* LatencyBudgetPolicy in a CompositeRouter chain so the
+// informed, whole-graph decision wins when a plan exists, falling through
+// to LatencyBudgetPolicy's simpler local rule when it doesn't (e.g. cold
+// start, before enough per-precision latency samples exist).
+class LOOMCORE_API PlannedPrecisionPolicy : public IRoutingPolicy {
+public:
+    std::string name() const override { return "PlannedPrecisionPolicy"; }
+    std::optional<RoutingDecision> decide(const RoutingContext& ctx) const override;
+};
+
+// Trips to fail-fast once a node's rolling error rate
+// (MetricsRegistry::outcomeStats) crosses `error_rate_threshold` over at
+// least `min_samples` observations, protecting the rest of the DAG (and
+// the caller) from continuing to dispatch work to a node that is
+// consistently failing. After `cooldown_ms`, the breaker "half-opens":
+// it lets exactly one probe request through (to test recovery) while
+// continuing to fail-fast everything else, and fully closes again once
+// that probe's outcome is recorded as a success.
+//
+// A tripped or half-open-but-not-yet-probed decision is expressed as
+// `skip = true` — the same semantics ConfidenceGatePolicy already uses
+// for "do not execute this node", so no scheduler change was needed to
+// add this policy; it only needed the outcome tracking in
+// MetricsRegistry::recordOutcome, which the scheduler now calls from
+// every node's completion/failure callback.
+class LOOMCORE_API CircuitBreakerPolicy : public IRoutingPolicy {
+public:
+    CircuitBreakerPolicy(double error_rate_threshold, size_t min_samples, double cooldown_ms)
+        : error_rate_threshold_(error_rate_threshold), min_samples_(min_samples), cooldown_ms_(cooldown_ms) {}
+    std::string name() const override { return "CircuitBreakerPolicy"; }
+    std::optional<RoutingDecision> decide(const RoutingContext& ctx) const override;
+
+private:
+    double error_rate_threshold_;
+    size_t min_samples_;
+    double cooldown_ms_;
+    // Trip state is per-node and shared across calls/threads, so it lives
+    // here rather than in the (const, per-call) RoutingContext. A tri-state
+    // machine, not a bool: Closed (healthy) -> Open (tripped, cooling down)
+    // -> HalfOpen (cooldown elapsed, exactly one probe request let through)
+    // -> Closed (probe succeeded) or -> Open (probe failed, cooldown
+    // restarts). See router.cpp for why this needs all three states rather
+    // than collapsing HalfOpen into "tripped == false": with only a bool,
+    // the very request that flips it back to "healthy" to admit the probe
+    // makes every *other* concurrent request look healthy too, letting
+    // them all through instead of just the one probe.
+    enum class BreakerState { Closed, Open, HalfOpen };
+    struct NodeBreakerState {
+        std::atomic<BreakerState> state{BreakerState::Closed};
+        std::atomic<long long> tripped_at_steady_ns{0};
+    };
+    mutable std::mutex state_mutex_;
+    mutable std::map<std::string, std::unique_ptr<NodeBreakerState>> state_;
+    NodeBreakerState& stateFor(const std::string& node_id) const;
+};
+
+// Caps how many requests for one node may be in flight at once
+// (MetricsRegistry::inFlight, incremented at dispatch / decremented at
+// completion by the scheduler). Once `max_concurrent` is reached, further
+// requests for that node are shed via `skip = true` rather than queuing
+// unboundedly — a bulkhead protects the rest of the DAG (and other jobs
+// sharing the node's lane) from one overloaded node backing up everything
+// behind it. This is a load-shedding decision, the same skip semantics as
+// ConfidenceGatePolicy and CircuitBreakerPolicy above, not a "wait" —
+// Loomcore's RoutingDecision has no "defer/retry" outcome, and honestly
+// shedding is preferable to a hidden unbounded queue anyway.
+class LOOMCORE_API BulkheadPolicy : public IRoutingPolicy {
+public:
+    explicit BulkheadPolicy(size_t max_concurrent) : max_concurrent_(max_concurrent) {}
+    std::string name() const override { return "BulkheadPolicy"; }
+    std::optional<RoutingDecision> decide(const RoutingContext& ctx) const override;
+
+private:
+    size_t max_concurrent_;
 };
 
 // Chain-of-responsibility over a list of policies: the first one to return

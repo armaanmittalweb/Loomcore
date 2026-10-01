@@ -18,10 +18,17 @@ namespace loomcore {
 // computed outputs of every upstream node this node (transitively or
 // directly) depends on. Binders are pure functions of this context so they
 // stay trivially testable in isolation from the scheduler.
+//
+// `upstream_outputs`' values are shared, not copied: the scheduler snapshots
+// this map once per node dispatch (see docs/ARCHITECTURE.md "Scheduler"),
+// and every job sharing a completed upstream node shares the same
+// heap-allocated `vector<NamedTensor>` rather than each dispatch deep-copying
+// every upstream tensor it might never read. Binders only ever see it
+// through the read-only accessors below.
 struct LOOMCORE_API NodeExecutionContext {
     std::string job_id;
     const TensorMap* graph_inputs = nullptr;
-    const std::map<std::string, std::vector<NamedTensor>>* upstream_outputs = nullptr;
+    const std::map<std::string, std::shared_ptr<const std::vector<NamedTensor>>>* upstream_outputs = nullptr;
 
     // Convenience accessor: the single named output tensor produced by
     // upstream node `node_id`. Throws LoomcoreError if either is missing.
@@ -67,8 +74,51 @@ struct LOOMCORE_API NodeConfig {
     ConfidenceExtractor confidence;
     std::string confidence_source_node;
 
+    // How much this node's prediction quality is presumed to matter,
+    // relative to other nodes, when PrecisionPlanner (loomcore/planner.h)
+    // has to choose which subset of critical-path nodes to downgrade to
+    // INT8 to fit a deadline. Higher = more precision-sensitive = more
+    // strongly preferred to stay at FP32. Purely a caller-declared hint —
+    // Loomcore has no accuracy measurement of its own (see
+    // docs/BENCHMARKS.md's "latency only, never accuracy" caveat) — and
+    // defaults to 1.0 for every node, under which the DP's chosen set
+    // coincides with the simpler "fewest nodes downgraded" greedy answer.
+    double quality_weight = 1.0;
+
     const VariantConfig* variant(Precision p) const;
     bool hasVariant(Precision p) const;
+};
+
+// A cooperative cancellation handle for one in-flight (or about-to-run)
+// ModelVariant::run() call. Binding one to a call lets another thread — the
+// scheduler's deadline reaper (see Scheduler / RuntimeOptions) — request
+// that ONNX Runtime abort the run at its next op boundary once a job's
+// time budget has passed, rather than merely deciding *not to route to*
+// a node ahead of time (that's what LatencyBudgetPolicy does). This is a
+// thin, header-clean wrapper around Ort::RunOptions::SetTerminate so that
+// no public Loomcore header needs to include the ONNX Runtime C++ API
+// (see loomcore/environment.h for why that boundary matters).
+//
+// Thread-safe: `requestCancel()` is meant to be called from a thread other
+// than the one executing `run()`.
+class LOOMCORE_API CancellationToken {
+public:
+    CancellationToken();
+    ~CancellationToken();
+    CancellationToken(const CancellationToken&) = delete;
+    CancellationToken& operator=(const CancellationToken&) = delete;
+
+    // Requests that any run currently (or subsequently) bound to this token
+    // abort as soon as ONNX Runtime next checks for termination. Idempotent.
+    void requestCancel();
+    bool cancelled() const;
+
+    // Opaque `Ort::RunOptions*`, cast back internally by model_node.cpp.
+    void* nativeHandle() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 // One loaded ONNX Runtime session for a single (node, precision) pair,
@@ -90,8 +140,11 @@ public:
 
     // Runs a batch. `inputs` must be ordered to match inputNames() (the
     // scheduler enforces this via the binder's declared order at load
-    // time). Returns outputs in outputNames() order.
-    std::vector<NamedTensor> run(const std::vector<NamedTensor>& inputs) const;
+    // time). Returns outputs in outputNames() order. If `cancel` is
+    // non-null, the run is bound to it for its duration so a concurrent
+    // `cancel->requestCancel()` aborts the underlying ONNX Runtime call;
+    // an aborted run throws LoomcoreError.
+    std::vector<NamedTensor> run(const std::vector<NamedTensor>& inputs, CancellationToken* cancel = nullptr) const;
 
 private:
     struct Impl;

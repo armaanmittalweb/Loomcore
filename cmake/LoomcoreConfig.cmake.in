@@ -1,0 +1,15 @@
+# Loomcore package config — consumed via find_package(Loomcore REQUIRED).
+#
+# Deliberately simple: loomcore_core's only third-party dependencies
+# (ONNX Runtime, nlohmann/json) are PRIVATE link dependencies (see
+# CMakeLists.txt) — nothing in Loomcore's public headers requires a
+# consumer to see them (loomcore/environment.h explains why for ONNX
+# Runtime specifically) — and loomcore_core is a shared library, so those
+# private dependencies are resolved inside loomcore_core.dll/.so itself at
+# the OS loader level, not at a consumer's link time. A consumer needs
+# nothing from this file but the exported `loomcore::core` target itself.
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/LoomcoreTargets.cmake")
+
+check_required_components(Loomcore)

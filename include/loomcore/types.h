@@ -90,4 +90,27 @@ public:
     explicit LoomcoreError(const std::string& what) : std::runtime_error(what) {}
 };
 
+// Surfaced through a job's future — thrown when runSync() is used, or when
+// the caller .get()s/.wait()s the future submitJob() returned — when
+// SchedulerConfig::enable_admission_control is on and PrecisionPlanner
+// judges the requested time budget undeliverable even after downgrading
+// every eligible critical-path node. submitJob() itself never throws this
+// synchronously: it returns an already-failed future immediately, before
+// any node has been dispatched. Catchable separately from a mid-run
+// failure (LoomcoreError) so a caller can distinguish "you never even
+// started my job" from "my job started and then something went wrong".
+class LOOMCORE_API JobRejectedError : public LoomcoreError {
+public:
+    explicit JobRejectedError(const std::string& what) : LoomcoreError(what) {}
+};
+
+// Thrown (via the job's future) when SchedulerConfig::enable_deadline_cancellation
+// is on and a job's time budget elapsed before it completed. Distinguishes
+// "the deadline reaper had to step in and cancel in-flight work" from an
+// ordinary node-level failure.
+class LOOMCORE_API DeadlineExceededError : public LoomcoreError {
+public:
+    explicit DeadlineExceededError(const std::string& what) : LoomcoreError(what) {}
+};
+
 } // namespace loomcore

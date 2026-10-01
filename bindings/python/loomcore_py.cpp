@@ -116,9 +116,11 @@ NodeInputBinder makePyBinder(py::function fn) {
         }
         py::dict upstream;
         if (ctx.upstream_outputs != nullptr) {
-            for (const auto& [k, vec] : *ctx.upstream_outputs) {
+            for (const auto& [k, vec_ptr] : *ctx.upstream_outputs) {
                 py::list lst;
-                for (const auto& t : vec) lst.append(tensorToNumpy(t));
+                if (vec_ptr) {
+                    for (const auto& t : *vec_ptr) lst.append(tensorToNumpy(t));
+                }
                 upstream[py::str(k)] = lst;
             }
         }

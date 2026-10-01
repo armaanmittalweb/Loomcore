@@ -57,8 +57,9 @@ cmake --build build --parallel
 ```
 
 Either way, every target (the `loomcore_core` shared library, the
-example, the benchmark, the tests, and the `_loomcore` Python extension)
-lands in one shared output directory (`build/bin/` — or
+examples, the benchmark, the tests, the C API smoke test, the trace
+exporter, and the `_loomcore` Python extension) lands in one shared
+output directory (`build/bin/` — or
 `build/bin/<Config>/` for the multi-config Visual Studio generator) so
 the ONNX Runtime and `loomcore_core` shared libraries are always
 discoverable next to whatever links them, without extra `PATH`/`LD_LIBRARY_PATH`
@@ -82,11 +83,19 @@ ctest --test-dir build -C RelWithDebInfo --output-on-failure   # tests only need
 
 ./build/bin/RelWithDebInfo/loomcore_example examples/sample.jpg
 ./build/bin/RelWithDebInfo/loomcore_bench --warmup 20 --iters 100
+./build/bin/RelWithDebInfo/loomcore_reload_demo          # hot-swaps the graph 6x under continuous load
+./build/bin/RelWithDebInfo/loomcore_trace_export logs/loomcore.jsonl trace.json   # -> ui.perfetto.dev
 
 # Python bindings (point at your build dir once; see bindings/python/loomcore/__init__.py)
 export LOOMCORE_BUILD_DIR=$PWD/build      # PowerShell: $env:LOOMCORE_BUILD_DIR = "$PWD/build"
 python examples/run_example.py
 ```
+
+`docs/CLAIMS.md` has the full, up-to-date list of what to run to check
+each specific claim this project makes about itself — including the C
+API smoke test and the from-scratch `find_package(Loomcore)` consumer in
+`examples/consumer/`, neither of which is part of the default build
+target list above.
 
 (Adjust `RelWithDebInfo` → nothing, or drop the `<Config>` path segment,
 on a single-config Ninja/Makefiles build.)

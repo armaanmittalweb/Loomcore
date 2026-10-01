@@ -11,8 +11,12 @@ add_executable(loomcore_tests
     test_router.cpp
     test_tokenizer.cpp
     test_scheduler.cpp
+    test_scheduler_deadlines.cpp
+    test_planner.cpp
+    test_runtime_reload.cpp
+    test_perfetto_export.cpp
 )
-target_link_libraries(loomcore_tests PRIVATE loomcore::core doctest)
+target_link_libraries(loomcore_tests PRIVATE loomcore::core doctest nlohmann_json::nlohmann_json)
 target_compile_definitions(loomcore_tests PRIVATE
     LOOMCORE_TEST_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../assets"
 )

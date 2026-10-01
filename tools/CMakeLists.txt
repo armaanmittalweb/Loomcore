@@ -1,0 +1,5 @@
+add_executable(loomcore_trace_export trace_export.cpp)
+target_link_libraries(loomcore_trace_export PRIVATE loomcore::core)
+if(MSVC)
+    target_compile_options(loomcore_trace_export PRIVATE /W4)
+endif()
