@@ -1,0 +1,30 @@
+{
+  "name": "loomcore-console",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5177 --strictPort",
+    "build": "tsc --noEmit && vite build && vite build --ssr src/entry-server.tsx --outDir dist-ssr && node scripts/prerender.mjs",
+    "preview": "vite preview --port 5178 --strictPort",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "claims": "node scripts/claims.mjs",
+    "record": "node scripts/record.mjs",
+    "shots": "node scripts/shots.mjs"
+  },
+  "dependencies": {
+    "preact": "^11.0.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource/barlow": "^5.3.0",
+    "@preact/preset-vite": "^2.10.6",
+    "playwright": "^1.63.0",
+    "preact-render-to-string": "^6.8.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
+  }
+}
