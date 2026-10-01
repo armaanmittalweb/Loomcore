@@ -62,7 +62,7 @@ def test_run_a_sample(api):
     # Confident enough: the confidence gate skips bert_tiny, and says why.
     assert body["skipped"] == ["bert_tiny"] and body["embedding"] is None
     assert any(p["policy"] == "ConfidenceGatePolicy" for d in body["decisions"] for p in d["policies"])
-    bars = [e for e in body["trace"] if e["ph"] == "X"]
+    bars = [e for e in body["trace"] if e["ph"] == "X" and e.get("cat") == "execution"]
     assert [b["name"] for b in bars] == ["mobilenet"]
     assert bars[0]["tid"] in (1, 2) and bars[0]["dur"] > 0
 
@@ -74,7 +74,7 @@ def test_run_through_both_nodes_returns_an_embedding(api):
     assert body["status"] == "ok" and body["graphSwapMs"] is not None  # a new chain means a hot-swap
     assert len(body["embedding"]) == 16 and body["text"].startswith("a photo of a ")
     assert [n["id"] for n in body["nodes"]] == ["mobilenet", "bert_tiny"]
-    bars = sorted((e for e in body["trace"] if e["ph"] == "X"), key=lambda e: e["ts"])
+    bars = sorted((e for e in body["trace"] if e.get("cat") == "execution"), key=lambda e: e["ts"])
     assert bars[0]["ts"] + bars[0]["dur"] <= bars[1]["ts"]  # bert_tiny ran after mobilenet finished
     flows = [e for e in body["trace"] if e.get("cat") == "dag_edge"]
     assert {f["ph"] for f in flows} == {"s", "f"}
@@ -107,7 +107,10 @@ def test_load(api):
     assert body["failed"] == 0
     assert {n["id"] for n in body["nodes"]} >= {"mobilenet"}
     assert sum(b["count"] for b in body["batches"]) > 0
-    assert sum(1 for e in body["trace"] if e["ph"] == "X") == sum(b["count"] for b in body["batches"])
+    executions = [e for e in body["trace"] if e["ph"] == "X" and e.get("cat") == "execution"]
+    assert len(executions) == sum(b["count"] for b in body["batches"])
+    jobs = [e for e in body["trace"] if e.get("cat") == "job"]
+    assert len(jobs) == 12 - body["rejected"]  # every admitted job's life, on the Jobs track
 
 
 def test_reload_under_load_loses_nothing(api):

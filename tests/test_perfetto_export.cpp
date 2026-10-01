@@ -12,6 +12,7 @@
 
 #include <cstdio>
 #include <fstream>
+#include <map>
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -181,6 +182,46 @@ TEST_CASE("exportPerfettoTrace attributes a multi-job batch to its jobs and bind
     CHECK(flows == 2); // one mobilenet -> bert_tiny edge per job
     CHECK(flow_starts_on_cpu == 2);
     CHECK(flow_ends_on_gpu == 2);
+    std::remove(jsonl_path.c_str());
+    std::remove(out_path.c_str());
+}
+
+TEST_CASE("exportPerfettoTrace draws each settled job's life on a Jobs track") {
+    // submit -> complete, and submit -> deadline error: two spans on tid 4,
+    // with their outcome. A job still in flight at the end of the log has no
+    // end and gets no span.
+    std::string jsonl_path = "perfetto_export_jobs_test.jsonl";
+    std::string out_path = "perfetto_export_jobs_test_trace.json";
+    {
+        std::ofstream out(jsonl_path);
+        out << R"({"ts":"2026-01-01T00:00:00.000000Z","event":"job_submitted","job_id":"job-1"})" << '\n';
+        out << R"({"ts":"2026-01-01T00:00:00.001000Z","event":"job_submitted","job_id":"job-2"})" << '\n';
+        out << R"({"ts":"2026-01-01T00:00:00.002000Z","event":"job_submitted","job_id":"job-3"})" << '\n';
+        out << R"({"ts":"2026-01-01T00:00:00.030000Z","event":"job_completed","job_id":"job-1"})" << '\n';
+        out << R"({"ts":"2026-01-01T00:00:00.026000Z","event":"error","job_id":"job-2","message":"job 'job-2' exceeded its time budget of 25.000000ms"})"
+            << '\n';
+    }
+    exportPerfettoTrace(jsonl_path, out_path);
+    nlohmann::json doc;
+    {
+        std::ifstream in(out_path);
+        in >> doc;
+    }
+    std::map<std::string, nlohmann::json> spans;
+    bool named_track = false;
+    for (const auto& ev : doc["traceEvents"]) {
+        if (ev.value("cat", "") == "job") spans[ev.value("name", "")] = ev;
+        if (ev.value("ph", "") == "M" && ev.value("tid", 0) == 4 && ev["args"].value("name", "") == "Jobs") named_track = true;
+    }
+    CHECK(named_track);
+    REQUIRE(spans.size() == 2);
+    CHECK(spans["job-1"].value("ts", int64_t{-1}) == 0);
+    CHECK(spans["job-1"].value("dur", int64_t{-1}) == 30000);
+    CHECK(spans["job-1"]["args"].value("status", "") == "ok");
+    CHECK(spans["job-2"].value("ts", int64_t{-1}) == 1000);
+    CHECK(spans["job-2"].value("dur", int64_t{-1}) == 25000);
+    CHECK(spans["job-2"]["args"].value("status", "") == "cancelled");
+    CHECK(spans["job-1"].value("tid", 0) == 4);
     std::remove(jsonl_path.c_str());
     std::remove(out_path.c_str());
 }

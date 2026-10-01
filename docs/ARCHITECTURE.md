@@ -640,7 +640,10 @@ a trace costs nothing during the run being traced): each simulated
 backend lane becomes its own track with a duration bar per real
 `ModelVariant::run()` call (from `batch_flushed` events, sized to their
 measured `latency_ms`), routing decisions become instant markers on a
-separate "Router" track, and each job's *observed* path through the DAG
+separate "Router" track, each job's life (submitted to completed, or to
+the error that failed it) becomes a span on a "Jobs" track, so the gaps
+between its bars read as batch-window waits and queueing, and each job's
+*observed* path through the DAG
 becomes connecting flow arrows, from the bar that ran a node for that job
 to the bar that ran its next node — read from the log's actual
 timestamps, not reconstructed from the `Graph`'s static topology, so what

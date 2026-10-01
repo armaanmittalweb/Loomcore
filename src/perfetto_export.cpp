@@ -81,6 +81,15 @@ struct Instant {
     std::string message;
 };
 
+// One job's life, from job_submitted to job_completed (or the error that
+// failed it), for the "Jobs" track: the gaps between a job's bars on the lane
+// tracks are its batch-window waits and queueing.
+struct JobSpan {
+    int64_t submitted_us = -1;
+    int64_t settled_us = -1;
+    std::string status; // "ok" | "cancelled" | "failed"
+};
+
 bool isRealJobId(const std::string& id) { return !id.empty() && id.front() != '('; }
 
 } // namespace
@@ -108,6 +117,8 @@ size_t exportPerfettoTrace(const std::string& jsonl_path, const std::string& out
 
     std::vector<Execution> executions;
     std::vector<Instant> instants;
+    std::map<std::string, JobSpan> job_spans;
+    std::vector<std::string> job_order;
     int64_t base_ts = -1;
     auto seeBase = [&](int64_t ts) {
         if (base_ts < 0 || ts < base_ts) base_ts = ts;
@@ -164,8 +175,26 @@ size_t exportPerfettoTrace(const std::string& jsonl_path, const std::string& out
         } else if (type == "routing_decision" || type == "job_rejected" || type == "error") {
             seeBase(ts);
             instants.push_back(Instant{ts, type, job_id, node_id, ev.value("message", "")});
+            if (type == "error" && isRealJobId(job_id)) {
+                auto it = job_spans.find(job_id);
+                if (it != job_spans.end() && it->second.settled_us < 0) {
+                    it->second.settled_us = ts;
+                    std::string message = ev.value("message", "");
+                    it->second.status = message.find("exceeded its time budget") != std::string::npos ? "cancelled" : "failed";
+                }
+            }
         } else {
             seeBase(ts);
+            if (type == "job_submitted" && isRealJobId(job_id) && !job_spans.count(job_id)) {
+                job_spans[job_id].submitted_us = ts;
+                job_order.push_back(job_id);
+            } else if (type == "job_completed" && isRealJobId(job_id)) {
+                auto it = job_spans.find(job_id);
+                if (it != job_spans.end() && it->second.settled_us < 0) {
+                    it->second.settled_us = ts;
+                    it->second.status = "ok";
+                }
+            }
         }
     }
 
@@ -187,6 +216,8 @@ size_t exportPerfettoTrace(const std::string& jsonl_path, const std::string& out
                              {"args", {{"name", "GPU_SIM lane"}}}});
     trace_events.push_back({{"name", "thread_name"}, {"ph", "M"}, {"pid", kPid}, {"tid", 3},
                              {"args", {{"name", "Router"}}}});
+    trace_events.push_back({{"name", "thread_name"}, {"ph", "M"}, {"pid", kPid}, {"tid", 4},
+                             {"args", {{"name", "Jobs"}}}});
 
     size_t written = 0;
     for (const auto& ex : executions) {
@@ -200,6 +231,21 @@ size_t exportPerfettoTrace(const std::string& jsonl_path, const std::string& out
                                  {"pid", kPid},
                                  {"tid", trackIdForBackend(ex.backend)},
                                  {"args", args}});
+        ++written;
+    }
+
+    // Settled jobs only: a job still in flight when the log ends has no end.
+    for (const auto& job : job_order) {
+        const JobSpan& span = job_spans[job];
+        if (span.settled_us < span.submitted_us) continue;
+        trace_events.push_back({{"name", job},
+                                 {"cat", "job"},
+                                 {"ph", "X"},
+                                 {"ts", span.submitted_us - base_ts},
+                                 {"dur", span.settled_us - span.submitted_us},
+                                 {"pid", kPid},
+                                 {"tid", 4},
+                                 {"args", {{"status", span.status}}}});
         ++written;
     }
 
