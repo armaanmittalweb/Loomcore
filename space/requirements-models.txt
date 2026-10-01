@@ -1,0 +1,12 @@
+# Model preparation (the image's first stage only; never in the final image).
+# Pinned: newer onnx/onnxruntime releases fail quant_pre_process on the opset-7
+# MobileNetV2 ("Unrecognized attribute: spatial for operator BatchNormalization"),
+# and make_sample_jpeg.py needs Pillow, which scripts/requirements.txt omits.
+# torch comes from the CPU-only index; see the Dockerfile.
+onnx==1.17.0
+onnxruntime==1.20.1
+onnxscript==0.7.2
+transformers==5.18.0
+huggingface_hub==1.33.0
+numpy==2.2.6
+pillow==12.3.0

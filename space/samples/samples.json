@@ -1,0 +1,62 @@
+[
+  {
+    "id": "tabby",
+    "file": "tabby.jpg",
+    "caption": "Tabby cat",
+    "width": 533,
+    "height": 640,
+    "author": "AdinaVoicu",
+    "licence": "CC0",
+    "source": "https://commons.wikimedia.org/wiki/File:Tabby_cat_with_blue_eyes-3336579.jpg"
+  },
+  {
+    "id": "retriever",
+    "file": "retriever.jpg",
+    "caption": "Golden retriever",
+    "width": 640,
+    "height": 640,
+    "author": "Cheetyuh",
+    "licence": "CC0",
+    "source": "https://commons.wikimedia.org/wiki/File:Golden_Retriever_Chewing_A_Stick.jpg"
+  },
+  {
+    "id": "espresso",
+    "file": "espresso.jpg",
+    "caption": "Espresso",
+    "width": 640,
+    "height": 427,
+    "author": "Jubair1985",
+    "licence": "CC0",
+    "source": "https://commons.wikimedia.org/wiki/File:Espresso_Coffee_01.jpg"
+  },
+  {
+    "id": "lighthouse",
+    "file": "lighthouse.jpg",
+    "caption": "Lighthouse",
+    "width": 640,
+    "height": 512,
+    "author": "Frank Schulenburg",
+    "licence": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Point_Reyes_Lighthouse_in_December_2019.jpg"
+  },
+  {
+    "id": "fox",
+    "file": "fox.jpg",
+    "caption": "Red fox",
+    "width": 640,
+    "height": 448,
+    "author": "Malene Thyssen",
+    "licence": "CC BY 2.5",
+    "source": "https://commons.wikimedia.org/wiki/File:R%C3%B8d_r%C3%A6v_(Vulpes_vulpes).jpg"
+  },
+  {
+    "id": "guitars",
+    "file": "guitars.jpg",
+    "caption": "Guitar shop",
+    "width": 640,
+    "height": 463,
+    "author": "Santeri Viinamäki",
+    "licence": "CC BY-SA 4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Acoustic_guitars_in_store_20180625.jpg"
+  }
+]

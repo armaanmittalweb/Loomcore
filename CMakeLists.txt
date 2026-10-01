@@ -129,6 +129,20 @@ add_custom_command(TARGET loomcore_core POST_BUILD
         "$<TARGET_FILE:onnxruntime>" "$<TARGET_FILE_DIR:loomcore_core>"
     COMMENT "Loomcore: staging ONNX Runtime shared library next to loomcore_core"
 )
+# On Linux the linker records ONNX Runtime's SONAME (libonnxruntime.so.1),
+# not the libonnxruntime.so symlink name copied above, so the versioned
+# names must sit next to loomcore_core too; otherwise nothing in the
+# output directory can find it at run time through the $ORIGIN rpath.
+set(_loomcore_ort_versioned "")
+if(UNIX AND NOT APPLE)
+    file(GLOB _loomcore_ort_versioned "${ONNXRUNTIME_ROOT_DIR}/lib/libonnxruntime.so.*")
+    foreach(_ort_lib ${_loomcore_ort_versioned})
+        get_filename_component(_ort_name "${_ort_lib}" NAME)
+        add_custom_command(TARGET loomcore_core POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_ort_lib}" "$<TARGET_FILE_DIR:loomcore_core>/${_ort_name}"
+        )
+    endforeach()
+endif()
 
 # ---------------------------------------------------------------------------
 # Installable package (see docs/CLAIMS.md #14 and examples/consumer/):
@@ -152,6 +166,9 @@ install(DIRECTORY include/loomcore DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 # loomcore_core.dll/.so still needs it on disk for the OS loader to find
 # at a consumer's run time, same as the in-tree copy_if_different above.
 install(FILES "$<TARGET_FILE:onnxruntime>" DESTINATION "${CMAKE_INSTALL_BINDIR}")
+if(_loomcore_ort_versioned)
+    install(FILES ${_loomcore_ort_versioned} DESTINATION "${CMAKE_INSTALL_BINDIR}")
+endif()
 
 install(EXPORT LoomcoreTargets
     FILE LoomcoreTargets.cmake

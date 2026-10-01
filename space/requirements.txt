@@ -1,0 +1,7 @@
+# Runtime dependencies of space/server.py (the final image). The compiled
+# bindings need numpy; Pillow decodes uploads; python-multipart parses them.
+fastapi==0.142.2
+uvicorn==0.54.0
+numpy==2.2.6
+pillow==12.3.0
+python-multipart==0.0.32
