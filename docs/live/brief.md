@@ -45,3 +45,53 @@ Audience: an engineer or recruiter who should understand in 30 seconds that this
 An instrument for systems engineers: dense, precise, quiet, like a well-made tracing tool or a hardware datasheet, not a SaaS landing page. Light (paper white, graphite ink) and dark (near-black, phosphor-free; no neon) themes, both designed. One accent per meaning: FP32 and INT8 get two distinct hues used everywhere; red only for cancels, rejects and lost jobs. Type: a technical sans for UI and a monospace for numbers, ids and reason strings (self-hosted, OFL). No hero section, no feature cards, no gradients, no glows, no emoji, no stock imagery, no marketing copy. Motion only on the timeline (bars appearing in time order on a live run, ≤ 600 ms total; none with reduced motion). Works at 390 px (the timeline scrolls horizontally inside its panel; controls stack), 0 axe violations, keyboard operable.
 
 Stack: Vite + TypeScript + Preact (or React), plain CSS with tokens. `vercel.json` with a strict CSP (connect-src self, the Space URL, `https://api.amittal.dev`), real `robots.txt`/`sitemap.xml`, title "Loomcore: a C++ runtime that schedules models as a graph", description, OG tags, prerendered text for crawlers.
+
+## Decisions made while building it (2 Oct 2026)
+
+**Runtime and bindings**
+
+- The Space repository holds only `space/README.md` and `space/Dockerfile`; the image clones this
+  repo at `LOOMCORE_REF` (default `live`, set as a Space variable to change it) so there is one
+  source of truth. A `GITHUB_TOKEN` build secret is used if present, for a private repo.
+- The build stage's steps are CI's Linux job verbatim (`pip install pybind11 numpy`, Ninja,
+  configure, build, `ctest`), plus the binding and server test suites against the real models.
+- Model preparation pins `onnx==1.17.0`/`onnxruntime==1.20.1` (newer releases fail
+  `quant_pre_process` on the opset-7 MobileNetV2) and adds Pillow (`make_sample_jpeg.py` needs it);
+  see `space/requirements-models.txt`.
+- Bugs found and fixed, each with a test: the Perfetto exporter drew every bar one full duration
+  late (`batch_flushed` is logged when a batch ends) and anchored DAG flows on a track with no
+  slices; CMake staged only `libonnxruntime.so`, not the `libonnxruntime.so.1` SONAME Linux binaries
+  load through `$ORIGIN`; `bindings/python/loomcore/__init__.py` looked for `build/` one directory
+  short of the repo root; Python binders and confidence extractors captured `py::function` by value,
+  so a graph retired by a hot-swap would drop Python references on a thread without the GIL.
+- Added to the exporter: each job's life (submit to settle) on a "Jobs" track, and which jobs each
+  batch served (`args.jobs`), recovered from `node_completed`.
+- Bound to Python: `RuntimeOptions`/`SchedulerConfig`, `reload_graph`, `graph()`, the four policies
+  that were missing, `WordPieceTokenizer`, `export_perfetto_trace`, and typed `LoomcoreError`,
+  `JobRejectedError`, `DeadlineExceededError`.
+- Admission control, deadline cancellation, precision planning and EDF lane scoring are always on
+  in the Space; they only act on a job with a budget. Bulkhead starts off: with it on, a load test
+  above six concurrent jobs is mostly sheds, which is worth choosing on purpose.
+- A different policy set hot-swaps the graph with the new router before the run (`graphSwapMs`).
+- One job-running request in the runtime at a time (each request's trace is exactly its jobs), one
+  `/load` or `/reload` at a time (429 with `retryAfter`), and the 20-a-minute limit applies to
+  POSTs; GETs have their own, looser limit so the console's wake-up polling never trips it.
+- `/reload` paces submissions adaptively so every swap happens with jobs in flight, and reports
+  in-flight jobs per swap.
+- When mobilenet is shed (bulkhead or circuit breaker), bert_tiny has no label to embed; the job
+  fails with a clear message and is reported as "shed", not as an unexplained failure.
+
+**Console**
+
+- Opens on real results recorded from a local build of this branch (native Windows build with
+  llvm-mingw, Intel i5-1145G7), labelled as such. Re-run `npm run record -- --from
+  https://armaanmittalweb-loomcore.hf.space` once the Space is up to replace them with Space
+  recordings; the label switches to "on the live runtime" by itself.
+- Layout: the left column observes (timeline, result, benchmark), the right column controls
+  (Run / Load test / Hot-swap, then the graph and its policy chain); claims run full width.
+- Type: Barlow (UI) and JetBrains Mono (numbers, ids, reasons), self-hosted, OFL.
+- Colour: FP32 `#2f6aa8` / `#5a89cc`, INT8 `#b0870a` / `#b38c25` (light / dark), validated for
+  colour-vision deficiency and contrast in both themes; crimson only for rejects, cancels and lost
+  jobs, always with a glyph and words.
+- The INT8 MobileNetV2 is calibrated on random tensors, so its labels are unreliable; the console
+  says so whenever a run used it.

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://loomcore.amittal.dev/sitemap.xml

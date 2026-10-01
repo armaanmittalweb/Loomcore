@@ -766,64 +766,73 @@ class LiveRuntime:
     def reload(self, jobs: int, swaps: int) -> dict[str, Any]:
         """examples/reload_demo.cpp over HTTP: producer threads keep submitting
         while the graph is rebuilt and swapped `swaps` times; every job must
-        complete. Submissions are paced so the load spans every swap."""
+        complete. The swaps run back to back once load is established, and the
+        producers stretch the jobs still to submit over the time the swaps still
+        to do will take (re-estimated from each measured build), so every swap
+        happens while jobs are being submitted and run."""
         self._acquire_heavy()
         policies = list(self.policies or DEFAULT_POLICIES)
-        build_s = max(0.05, self.reload_build_ms / 1000.0)
-        self.heavy_estimate_s = 2.0 + (swaps + 1) * build_s * 1.5
+        self.heavy_estimate_s = 2.0 + (swaps + 1) * max(0.05, self.reload_build_ms / 1000.0) * 1.5
         try:
             since = iso_now()
             tensor = self.sample_tensors[self.samples[0]["id"]]
             lock = threading.Lock()
-            counts = {"submitted": 0, "completed": 0, "lost": 0}
-            # Spread submissions over (swaps + 1) swap-lengths: the first swap
-            # starts once 1/(swaps+1) of the jobs are in, and each later one
-            # starts at its own share, so even the last swap lands while jobs
-            # are still being submitted and run.
-            spacing = (swaps + 1) * build_s * 1.15 / jobs
+            st = {"submitted": 0, "completed": 0, "lost": 0, "swapped": 0, "next_at": 0.0,
+                  "build_s": max(0.05, self.reload_build_ms / 1000.0) * 1.3}
             start = time.perf_counter()
+
+            def spacing_locked() -> float:
+                left = jobs - st["submitted"]
+                if st["swapped"] >= swaps or left <= 0:
+                    return 0.0
+                return (swaps - st["swapped"]) * st["build_s"] * 1.2 / left
 
             def producer() -> None:
                 while True:
                     with lock:
-                        if counts["submitted"] >= jobs:
+                        if st["submitted"] >= jobs:
                             return
-                        index = counts["submitted"]
-                        counts["submitted"] += 1
-                    delay = start + index * spacing - time.perf_counter()
-                    if delay > 0:
-                        time.sleep(delay)
+                        st["submitted"] += 1
+                        now = time.perf_counter()
+                        at = max(now, st["next_at"])
+                        st["next_at"] = at + spacing_locked()
+                    if at > now:
+                        time.sleep(at - now)
                     try:
                         self.runtime.run({"data": tensor})
                         ok = True
                     except Exception:  # noqa: BLE001 - any failure is a lost job
                         ok = False
                     with lock:
-                        counts["completed" if ok else "lost"] += 1
+                        st["completed" if ok else "lost"] += 1
 
             threads = [threading.Thread(target=producer, daemon=True) for _ in range(4)]
             for t in threads:
                 t.start()
             swap_log = []
             binders, extractors = self._binders()
-            for i in range(1, swaps + 1):
-                target = math.ceil(i * jobs / (swaps + 1))
-                while True:
-                    with lock:
-                        if counts["submitted"] >= target:
-                            break
-                    time.sleep(0.002)
+            warm = min(jobs - 1, max(4, jobs // (swaps + 1)))
+            while True:  # let the load get going first
                 with lock:
-                    done_before = counts["completed"]
-                    in_flight = counts["submitted"] - counts["completed"] - counts["lost"]
+                    if st["submitted"] >= warm:
+                        break
+                time.sleep(0.002)
+            for i in range(1, swaps + 1):
+                with lock:
+                    done_before = st["completed"]
+                    in_flight = st["submitted"] - st["completed"] - st["lost"]
                 wall_us = int(time.time() * 1e6)
                 t0 = time.perf_counter()
                 self.runtime.reload_graph(self.config_path, binders, extractors, self._router(policies),
                                           self._options())
                 build_ms = (time.perf_counter() - t0) * 1e3
+                with lock:
+                    st["swapped"] += 1
+                    st["build_s"] = max(st["build_s"] * 0.6, build_ms / 1000.0 * 1.15)
                 self.reload_build_ms = 0.7 * self.reload_build_ms + 0.3 * build_ms
                 swap_log.append({"index": i, "wallUs": wall_us, "buildMs": round(build_ms, 1),
                                  "completedBefore": done_before, "inFlight": in_flight})
+            counts = st
             for t in threads:
                 t.join(timeout=HEAVY_TIMEOUT_S)
             wall_ms = (time.perf_counter() - start) * 1000.0

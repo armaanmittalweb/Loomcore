@@ -40,7 +40,24 @@ const graph = await call('/graph');
 const bench = await call('/bench');
 // Warm the default chain so the recorded run doesn't include a graph swap.
 await call('/run', { sample: 'fox' });
-const run = await call('/run', { sample: 'fox', timeBudgetMs: 40 });
+// The featured run: a budget tight enough that the router downgrades a node, loose
+// enough that the job completes (timing varies by a few ms run to run).
+let run;
+for (const budget of [40, 42, 45, 50, 55, 60]) {
+  run = await call('/run', { sample: 'fox', timeBudgetMs: budget });
+  if (run.status === 'ok' && run.nodes.length === 2 && run.decisions.length) break;
+}
+
+// Extra real runs for the screenshot script's states, taken before the load test
+// so its queueing does not inflate the latency the planner judges budgets by.
+save(FIX, 'run-skip.json', await call('/run', { sample: 'lighthouse' }));
+save(FIX, 'run-rejected.json', await call('/run', { sample: 'tabby', timeBudgetMs: 3 }));
+let cancelled;
+for (const budget of [25, 22, 28, 20, 30]) {
+  cancelled = await call('/run', { sample: 'tabby', timeBudgetMs: budget });
+  if (cancelled.status === 'cancelled') break;
+}
+save(FIX, 'run-cancelled.json', cancelled);
 const load = await call('/load', { jobs: 48, concurrency: 12, timeBudgetMs: 120 });
 const reload = await call('/reload', { jobs: 48, swaps: 4 });
 
@@ -59,15 +76,7 @@ save(OUT, 'run.json', run);
 save(OUT, 'load.json', load);
 save(OUT, 'reload.json', reload);
 
-// Extra real runs for the screenshot script's states.
-save(FIX, 'run-skip.json', await call('/run', { sample: 'lighthouse' }));
-save(FIX, 'run-rejected.json', await call('/run', { sample: 'tabby', timeBudgetMs: 3 }));
-let cancelled;
-for (const budget of [25, 22, 28, 20, 30]) {
-  cancelled = await call('/run', { sample: 'tabby', timeBudgetMs: budget });
-  if (cancelled.status === 'cancelled') break;
-}
-save(FIX, 'run-cancelled.json', cancelled);
+
 save(FIX, 'load-shed.json', await call('/load', { jobs: 32, concurrency: 12, policies: ['bulkhead', 'load-aware'] }));
 
 console.log(`recorded from ${BASE} (${health.cpu}) at ${meta.recordedAt}`);

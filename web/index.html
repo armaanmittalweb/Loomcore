@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Loomcore: a C++ runtime that schedules models as a graph</title>
+    <meta name="description" content="Watch a real C++ runtime schedule MobileNetV2 and bert_tiny as a dependency graph: a policy router, dynamic batching on two backend lanes, INT8 paths, binding deadlines and a zero-downtime graph hot-swap, drawn from its own trace. Run it yourself." />
+    <link rel="canonical" href="https://loomcore.amittal.dev/" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f7f7f4" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0e0f11" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/barlow-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/jetbrains-mono-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Loomcore" />
+    <meta property="og:title" content="Loomcore: a C++ runtime that schedules models as a graph" />
+    <meta property="og:description" content="A real scheduler running real models: router decisions, batches, INT8 downgrades, deadline cancels and a graph hot-swap with zero jobs lost, drawn from the runtime's own trace." />
+    <meta property="og:url" content="https://loomcore.amittal.dev/" />
+    <meta property="og:image" content="https://loomcore.amittal.dev/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <noscript>
+      <p>The console draws and drives the live runtime, so it needs JavaScript. The text above is the recorded run it opens on.</p>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

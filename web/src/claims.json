@@ -1,0 +1,146 @@
+[
+  {
+    "n": 1,
+    "claim": "The full test suite passes",
+    "command": "ctest --test-dir build -C RelWithDebInfo --output-on-failure",
+    "test": null,
+    "file": "tests/CMakeLists.txt",
+    "line": null,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/tests/CMakeLists.txt"
+  },
+  {
+    "n": 2,
+    "claim": "A job's promise is settled exactly once, even under a deadline reaper racing a node's natural completion (no `std::terminate`)",
+    "command": "build\\bin\\RelWithDebInfo\\loomcore_tests.exe --test-case=\"Deadline cancellation fails the job and never double-settles the promise under repeated stress\"",
+    "test": "Deadline cancellation fails the job and never double-settles the promise under repeated stress",
+    "file": "tests/test_scheduler_deadlines.cpp",
+    "line": 173,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/tests/test_scheduler_deadlines.cpp#L173"
+  },
+  {
+    "n": 3,
+    "claim": "Batching never mixes incompatible non-batch shapes for the same node",
+    "command": "build\\bin\\RelWithDebInfo\\loomcore_tests.exe --test-case=\"Batching keys on shape, not just (node, precision): mixed widths never cross-contaminate\"",
+    "test": "Batching keys on shape, not just (node, precision): mixed widths never cross-contaminate",
+    "file": "tests/test_scheduler_deadlines.cpp",
+    "line": 80,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/tests/test_scheduler_deadlines.cpp#L80"
+  },
+  {
+    "n": 4,
+    "claim": "`Scheduler::shutdown()` actually stops accepting new jobs (not a no-op)",
+    "command": "build\\bin\\RelWithDebInfo\\loomcore_tests.exe --test-case=\"Scheduler::shutdown() actually stops accepting new jobs\"",
+    "test": "Scheduler::shutdown() actually stops accepting new jobs",
+    "file": "tests/test_scheduler_deadlines.cpp",
+    "line": 119,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/tests/test_scheduler_deadlines.cpp#L119"
+  },
+  {
+    "n": 5,
+    "claim": "Admission control rejects a job the precision planner judges undeliverable, and dispatches nothing first",
+    "command": "build\\bin\\RelWithDebInfo\\loomcore_tests.exe --test-case=\"Admission control rejects a job the precision planner judges undeliverable\"",
+    "test": "Admission control rejects a job the precision planner judges undeliverable",
+    "file": "tests/test_scheduler_deadlines.cpp",
+    "line": 136,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/tests/test_scheduler_deadlines.cpp#L136"
+  },
+  {
+    "n": 6,
+    "claim": "The precision-downgrade knapsack finds the true minimum-quality-loss set, which a savings-only greedy would not",
+    "command": "build\\bin\\RelWithDebInfo\\loomcore_tests.exe --test-case=\"PrecisionPlanner: minimal-weight knapsack beats greedy-by-largest-saving\"",
+    "test": "PrecisionPlanner: minimal-weight knapsack beats greedy-by-largest-saving",
+    "file": "tests/test_planner.cpp",
+    "line": 73,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/tests/test_planner.cpp#L73"
+  },
+  {
+    "n": 7,
+    "claim": "The circuit breaker lets through exactly one probe after cooldown, never more, under concurrent load",
+    "command": "build\\bin\\RelWithDebInfo\\loomcore_tests.exe --test-case=\"CircuitBreakerPolicy: exactly one caller is let through as the probe after cooldown\"",
+    "test": "CircuitBreakerPolicy: exactly one caller is let through as the probe after cooldown",
+    "file": "tests/test_router.cpp",
+    "line": 223,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/tests/test_router.cpp#L223"
+  },
+  {
+    "n": 8,
+    "claim": "`Runtime::reloadGraph` hot-swaps the graph under continuous concurrent load with zero jobs lost",
+    "command": "build\\bin\\RelWithDebInfo\\loomcore_tests.exe --test-case=\"Runtime::reloadGraph swaps graphs under continuous concurrent load with zero jobs lost\"",
+    "test": "Runtime::reloadGraph swaps graphs under continuous concurrent load with zero jobs lost",
+    "file": "tests/test_runtime_reload.cpp",
+    "line": 48,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/tests/test_runtime_reload.cpp#L48"
+  },
+  {
+    "n": 9,
+    "claim": "The same hot-swap holds against the real mobilenet+bert_tiny pipeline, with per-swap timing reported",
+    "command": "build\\bin\\RelWithDebInfo\\loomcore_reload_demo.exe",
+    "test": null,
+    "file": "examples/reload_demo.cpp",
+    "line": null,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/examples/reload_demo.cpp"
+  },
+  {
+    "n": 10,
+    "claim": "The reference pipeline runs end to end (real image → classification → confidence-gated embedding) and reports real per-node p50/p95",
+    "command": "build\\bin\\RelWithDebInfo\\loomcore_example.exe examples/sample.jpg",
+    "test": null,
+    "file": "examples/run_example.cpp",
+    "line": null,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/examples/run_example.cpp"
+  },
+  {
+    "n": 11,
+    "claim": "INT8 MobileNetV2 is measurably *slower* than FP32 on the reference (non-VNNI) machine — not fabricated, not silently skipped",
+    "command": "build\\bin\\RelWithDebInfo\\loomcore_bench.exe --warmup 20 --iters 100",
+    "test": null,
+    "file": "benchmarks/latency_bench.cpp",
+    "line": null,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/benchmarks/latency_bench.cpp"
+  },
+  {
+    "n": 12,
+    "claim": "The ORT dependency is fully encapsulated: the benchmark links and runs with no ONNX Runtime include/link dependency of its own",
+    "command": "grep -rn \"onnxruntime\" benchmarks/latency_bench.cpp",
+    "test": null,
+    "file": "benchmarks/latency_bench.cpp",
+    "line": null,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/benchmarks/latency_bench.cpp"
+  },
+  {
+    "n": 13,
+    "claim": "The C API is a real, separate consumable surface: a pure-C translation unit links and runs against it with no C++ Loomcore headers",
+    "command": "cmake --build build --config RelWithDebInfo --target loomcore_c_smoke_test && build\\bin\\RelWithDebInfo\\loomcore_c_smoke_test.exe",
+    "test": null,
+    "file": "bindings/c/smoke_test.c",
+    "line": null,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/bindings/c/smoke_test.c"
+  },
+  {
+    "n": 14,
+    "claim": "The installed package is consumable via plain `find_package(Loomcore)` — not just \"it builds in-tree\"",
+    "command": "examples/consumer/README.md",
+    "test": null,
+    "file": "examples/consumer",
+    "line": null,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/examples/consumer"
+  },
+  {
+    "n": 15,
+    "claim": "CI builds and tests both platforms (Windows + Linux) on every push/PR",
+    "command": "badge/history at the repo's Actions tab",
+    "test": null,
+    "file": ".github/workflows/build.yml",
+    "line": null,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/.github/workflows/build.yml"
+  },
+  {
+    "n": 16,
+    "claim": "A run's JSON-lines log converts to a real, structurally valid Perfetto/Chrome Trace Event Format timeline — lane tracks, per-execution duration bars, routing markers, DAG flow arrows",
+    "command": "build\\bin\\RelWithDebInfo\\loomcore_example.exe examples/sample.jpg && build\\bin\\RelWithDebInfo\\loomcore_trace_export.exe logs\\loomcore.jsonl trace.json",
+    "test": null,
+    "file": "tests/test_perfetto_export.cpp",
+    "line": null,
+    "url": "https://github.com/armaanmittalweb/loomcore/blob/main/tests/test_perfetto_export.cpp"
+  }
+]

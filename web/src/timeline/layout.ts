@@ -38,6 +38,15 @@ export interface Edge {
   job: string;
 }
 
+/** One job's life: submitted to settled (the Jobs track). */
+export interface JobSpan {
+  job: string;
+  start: number;
+  end: number;
+  status: 'ok' | 'cancelled' | 'failed';
+  row: number;
+}
+
 export interface SwapMark {
   index: number;
   ts: number;
@@ -47,6 +56,8 @@ export interface SwapMark {
 
 export interface TimelineModel {
   bars: Bar[];
+  jobs: JobSpan[];
+  jobRows: number;
   markers: Marker[];
   edges: Edge[];
   swaps: SwapMark[];
@@ -99,6 +110,42 @@ export function packRows(bars: Bar[]): Record<Lane, number> {
   return rows;
 }
 
+/** The same packing for job spans; returns the number of rows (0 when there are no spans). */
+export function packSpans(spans: JobSpan[]): number {
+  const ends: number[] = [];
+  for (const s of [...spans].sort((a, b) => a.start - b.start)) {
+    let row = ends.findIndex((e) => e <= s.start);
+    if (row < 0) {
+      row = ends.length;
+      ends.push(s.end);
+    } else ends[row] = s.end;
+    s.row = row;
+  }
+  return ends.length;
+}
+
+function shortPolicy(name: string): string {
+  return name.replace(/Policy$/, '').replace(/^CompositeRouter -> /, '');
+}
+
+/** A compact direct label for a router marker: "LatencyBudget: bert_tiny → INT8". */
+export function markerLabel(m: Marker): string {
+  if (m.kind === 'cancelled') return `cancelled ${m.job}`.trim();
+  if (m.kind === 'rejected') return 'rejected by admission control';
+  if (m.kind === 'shed') return `${m.job} failed: shed upstream`;
+  if (m.kind === 'error') return `${m.job} failed`;
+  const parts = m.policies.map((p) => {
+    const who = shortPolicy(p.policy);
+    const node = p.reason.match(/node '([^']+)'/)?.[1] ?? m.node;
+    if (m.kind === 'skip') return `${who}: skip ${node}`;
+    if (/INT8/.test(p.reason)) return `${who}: ${node} → INT8`;
+    const q = p.reason.match(/cpu_queue=(\d+) gpu_sim_queue=(\d+)/);
+    if (q) return `${who}: ${node} → ${Number(q[1]) < Number(q[2]) ? 'CPU' : 'GPU_SIM'}`;
+    return who;
+  });
+  return parts.join(' · ');
+}
+
 function barAt(bars: Bar[], lane: Lane | undefined, ts: number): Bar | undefined {
   const onLane = bars.filter((b) => b.lane === lane);
   return (
@@ -113,11 +160,15 @@ function barAt(bars: Bar[], lane: Lane | undefined, ts: number): Bar | undefined
 export function buildModel(trace: TraceEvent[], swaps: SwapTiming[] = []): TimelineModel {
   const bars: Bar[] = [];
   const markers: Marker[] = [];
+  const jobs: JobSpan[] = [];
   const flowStarts = new Map<number, TraceEvent>();
   const flowEnds = new Map<number, TraceEvent>();
 
   for (const ev of trace) {
-    if (ev.ph === 'X' && typeof ev.ts === 'number') {
+    if (ev.ph === 'X' && ev.cat === 'job' && typeof ev.ts === 'number') {
+      const status = ev.args?.status;
+      jobs.push({ job: ev.name, start: ev.ts, end: ev.ts + Math.max(0, ev.dur ?? 0), status: status === 'cancelled' || status === 'failed' ? status : 'ok', row: 0 });
+    } else if (ev.ph === 'X' && typeof ev.ts === 'number') {
       const lane = TID_LANE[ev.tid ?? 0];
       if (!lane) continue;
       const args = ev.args ?? {};
@@ -168,9 +219,10 @@ export function buildModel(trace: TraceEvent[], swaps: SwapTiming[] = []): Timel
   }
 
   const rows = packRows(bars);
+  const jobRows = packSpans(jobs);
   const swapMarks = swaps.map((s) => ({ index: s.index, ts: s.atMs * 1000, buildMs: s.buildMs, inFlight: s.inFlight }));
-  const end = Math.max(1, ...bars.map((b) => b.end), ...markers.map((m) => m.ts), ...swapMarks.map((s) => s.ts));
-  return { bars, markers, edges, swaps: swapMarks, rows, end };
+  const end = Math.max(1, ...bars.map((b) => b.end), ...jobs.map((j) => j.end), ...markers.map((m) => m.ts), ...swapMarks.map((s) => s.ts));
+  return { bars, jobs, jobRows, markers, edges, swaps: swapMarks, rows, end };
 }
 
 // -- view arithmetic --------------------------------------------------------
@@ -236,17 +288,21 @@ export function edgePath(x1: number, y1: number, x2: number, y2: number): string
 }
 
 /** Everything in time order, for keyboard stepping and the table view. */
-export type Item = { type: 'bar'; bar: Bar } | { type: 'marker'; marker: Marker };
+export type Item = { type: 'bar'; bar: Bar } | { type: 'marker'; marker: Marker } | { type: 'job'; job: JobSpan };
+
+export function itemTime(i: Item): number {
+  return i.type === 'bar' ? i.bar.start : i.type === 'marker' ? i.marker.ts : i.job.start;
+}
 
 export function itemsInOrder(model: TimelineModel): Item[] {
   const items: Item[] = [
+    ...model.jobs.map((job) => ({ type: 'job' as const, job })),
     ...model.bars.map((bar) => ({ type: 'bar' as const, bar })),
     ...model.markers.map((marker) => ({ type: 'marker' as const, marker })),
   ];
-  const at = (i: Item) => (i.type === 'bar' ? i.bar.start : i.marker.ts);
-  return items.sort((a, b) => at(a) - at(b));
+  return items.sort((a, b) => itemTime(a) - itemTime(b));
 }
 
 export function itemKey(item: Item): string {
-  return item.type === 'bar' ? `b${item.bar.id}` : `m${item.marker.id}`;
+  return item.type === 'bar' ? `b${item.bar.id}` : item.type === 'marker' ? `m${item.marker.id}` : `j${item.job.job}`;
 }

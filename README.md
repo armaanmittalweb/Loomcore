@@ -28,6 +28,26 @@ Image ──▶ [mobilenet: FP32/INT8, CPU]──▶ argmax + label ──▶ [b
                   (skip bert_tiny once mobilenet is already confident — a live router decision, not a static graph)
 ```
 
+## Live
+
+**[loomcore.amittal.dev](https://loomcore.amittal.dev)** is a console for the real runtime: it opens
+on a recorded run and draws it as a timeline from the runtime's own trace (one track per backend
+lane, a bar per ONNX Runtime call coloured by precision, batches, router decisions with their
+reasons, DAG edges, each job's life), then lets you run one job on a sample or your own image, run
+a load test, or hot-swap the graph under load, with the router policies toggled as you like.
+
+- **Runtime:** a Hugging Face Docker Space (`armaanmittalweb/loomcore`,
+  `https://armaanmittalweb-loomcore.hf.space`) built from `space/Dockerfile`: it clones this repo,
+  prepares the models, builds and tests exactly as CI's Linux job does (the image fails to build
+  unless `ctest` passes), runs the binding and server tests, and serves `space/server.py`, a small
+  FastAPI layer over the Python bindings. See [space/README.md](space/README.md) for the API.
+- **Console:** `web/` (Vite, TypeScript, Preact), deployed to Vercel with `web/` as the root.
+- **The recorded run.** A free Space sleeps when idle and takes about a minute to wake, so the
+  console never opens on a spinner: it renders real results captured from the runtime
+  (`web/src/recorded/*.json`, written by `npm run record` against a running server, labelled with
+  the date and machine) while it wakes the Space in the background, then unlocks the controls.
+  Every panel says whether it shows recorded or live data.
+
 ## What's actually in here
 
 | Milestone | Where |
@@ -166,7 +186,9 @@ tools/                 loomcore_trace_export: JSONL log -> Perfetto/Chrome Trace
 benchmarks/            FP32 vs INT8 latency benchmark
 tests/                 doctest unit + scheduler-integration tests (hermetic: tiny fixture ONNX graphs, no downloads)
 scripts/               Model download/export/quantization pipeline (Python, build-time only)
-docs/                  ARCHITECTURE.md, BUILD.md, BENCHMARKS.md, CLAIMS.md
+docs/                  ARCHITECTURE.md, BUILD.md, BENCHMARKS.md, CLAIMS.md, live/ (the live console's brief)
+space/                 The Hugging Face Space: Dockerfile, FastAPI server over the bindings, tests, samples
+web/                   The console at loomcore.amittal.dev
 ```
 
 ## Why these design choices
