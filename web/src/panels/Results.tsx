@@ -216,8 +216,8 @@ export function LoadView({ r }: { r: LoadResult }) {
               <th scope="col" class="num">runs</th>
               <th scope="col" class="num">p50 ms</th>
               <th scope="col" class="num">p95 ms</th>
-              <th scope="col">FP32 / INT8</th>
-              <th scope="col">CPU / GPU_SIM</th>
+              <th scope="col" class="mix-col">FP32 / INT8</th>
+              <th scope="col" class="lanes-col">CPU / GPU_SIM</th>
             </tr>
           </thead>
           <tbody>
@@ -232,7 +232,7 @@ export function LoadView({ r }: { r: LoadResult }) {
                 <td>
                   <PrecisionMix n={n} />
                 </td>
-                <td class="mono">
+                <td class="mono lanes-col">
                   {n.lanes.CPU ?? 0} / {n.lanes.GPU_SIM ?? 0}
                 </td>
               </tr>

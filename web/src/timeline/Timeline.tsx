@@ -24,7 +24,8 @@ import {
   zoomAt,
 } from './layout';
 
-const LABEL_W = 108;
+const LABEL_W_WIDE = 108;
+const LABEL_W_NARROW = 80;
 const RULER_H = 30;
 const ROW_H = 26;
 const BAR_H = 18;
@@ -32,7 +33,8 @@ const LANE_PAD = 11;
 const ROUTER_H = 42;
 const JOB_ROW = 9;
 const JOB_PAD = 12;
-const MIN_W = 760;
+// Dense traces (a load test) scroll sideways below this; a few bars fit the panel.
+const DENSE_MIN_W = 760;
 
 const LANE_NAME = { CPU: 'CPU', GPU_SIM: 'GPU_SIM' } as const;
 const LANE_SUB = { CPU: 'lane', GPU_SIM: 'simulated lane' } as const;
@@ -171,7 +173,7 @@ export function Timeline({ trace, swaps, animate = false, busy = null, label }: 
   const items = useMemo(() => itemsInOrder(model), [model]);
   const bounds = useMemo(() => fitView(model), [model]);
   const [view, setView] = useState<View>(bounds);
-  const [width, setWidth] = useState(880);
+  const [boxW, setBoxW] = useState(880);
   const [hover, setHover] = useState<string | null>(null);
   const [sel, setSel] = useState<number | null>(null);
   const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle');
@@ -188,15 +190,18 @@ export function Timeline({ trace, swaps, animate = false, busy = null, label }: 
   useEffect(() => {
     const el = scroller.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => setWidth(Math.max(MIN_W, el.clientWidth)));
+    const ro = new ResizeObserver(() => setBoxW(el.clientWidth));
     ro.observe(el);
-    setWidth(Math.max(MIN_W, el.clientWidth));
+    setBoxW(el.clientWidth);
     return () => ro.disconnect();
   }, []);
 
-  const plotW = width - LABEL_W;
+  const narrow = boxW < 560;
+  const labelW = narrow ? LABEL_W_NARROW : LABEL_W_WIDE;
+  const width = Math.max(model.bars.length > 8 ? DENSE_MIN_W : 0, boxW > 0 ? boxW : 880, labelW + 160);
+  const plotW = width - labelW;
   const { tops, height } = laneTops(model);
-  const x = (ts: number) => LABEL_W + xOf(ts, view, plotW);
+  const x = (ts: number) => labelW + xOf(ts, view, plotW);
   const tickList = ticks(view, plotW);
   const step = tickList.length > 1 ? tickList[1] - tickList[0] : view.t1 - view.t0;
   const barById = new Map(model.bars.map((b) => [b.id, b]));
@@ -207,7 +212,7 @@ export function Timeline({ trace, swaps, animate = false, busy = null, label }: 
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       const rect = el.getBoundingClientRect();
-      const px = e.clientX - rect.left - LABEL_W;
+      const px = e.clientX - rect.left - labelW;
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const anchor = tsOf(Math.max(0, px), view, plotW);
@@ -347,7 +352,7 @@ export function Timeline({ trace, swaps, animate = false, busy = null, label }: 
           >
             <defs>
               <clipPath id="tl-plot">
-                <rect x={LABEL_W} y={0} width={plotW} height={height} />
+                <rect x={labelW} y={0} width={plotW} height={height} />
               </clipPath>
               <marker id="tl-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                 <path d="M0 0.5 L7.5 4 L0 7.5 Z" class="arrowhead" />
@@ -365,7 +370,7 @@ export function Timeline({ trace, swaps, animate = false, busy = null, label }: 
                 <line key={`g${t}`} class="gl" x1={x(t)} x2={x(t)} y1={RULER_H} y2={height} />
               ))}
             </g>
-            <line class="axis" x1={LABEL_W} x2={width} y1={RULER_H - 0.5} y2={RULER_H - 0.5} />
+            <line class="axis" x1={labelW} x2={width} y1={RULER_H - 0.5} y2={RULER_H - 0.5} />
             <g class="ruler" clip-path="url(#tl-plot)">
               {tickList.map((t) => (
                 <g key={`t${t}`}>
@@ -374,12 +379,12 @@ export function Timeline({ trace, swaps, animate = false, busy = null, label }: 
                 </g>
               ))}
             </g>
-            <text class="ruler-unit" x={LABEL_W - 10} y={RULER_H - 10} text-anchor="end">ms</text>
+            <text class="ruler-unit" x={labelW - 10} y={RULER_H - 10} text-anchor="end">ms</text>
 
             {LANES.map((lane) => (
               <g key={`l${lane}`} class="lane-label">
                 <text x={12} y={tops[lane] + LANE_PAD + 11}>{LANE_NAME[lane]}</text>
-                <text class="sub" x={12} y={tops[lane] + LANE_PAD + 24}>{LANE_SUB[lane]}</text>
+                {!narrow && <text class="sub" x={12} y={tops[lane] + LANE_PAD + 24}>{LANE_SUB[lane]}</text>}
               </g>
             ))}
             <g class="lane-label">
@@ -388,10 +393,10 @@ export function Timeline({ trace, swaps, animate = false, busy = null, label }: 
             {model.jobRows > 0 && (
               <g class="lane-label">
                 <text x={12} y={tops.jobs + JOB_PAD + 9}>Jobs</text>
-                <text class="sub" x={12} y={tops.jobs + JOB_PAD + 22}>submit → settle</text>
+                {!narrow && <text class="sub" x={12} y={tops.jobs + JOB_PAD + 22}>submit → settle</text>}
               </g>
             )}
-            <line class="divider" x1={LABEL_W - 0.5} x2={LABEL_W - 0.5} y1={RULER_H} y2={height} />
+            <line class="divider" x1={labelW - 0.5} x2={labelW - 0.5} y1={RULER_H} y2={height} />
 
             <g clip-path="url(#tl-plot)">
               {model.swaps.map((s) => {
@@ -521,7 +526,10 @@ export function Timeline({ trace, swaps, animate = false, busy = null, label }: 
 
       <div class="tl-foot">
         <p class="fine">
-          <kbd>Ctrl</kbd> + wheel zooms, drag pans, <kbd>←</kbd> <kbd>→</kbd> step through events. Open in Perfetto: copy the trace, save it as <code>trace.json</code>, drop it on <code>ui.perfetto.dev</code>.
+          <span class="hint-fine">
+            <kbd>Ctrl</kbd> + wheel zooms, drag pans, <kbd>←</kbd> <kbd>→</kbd> step through events.
+          </span>
+          <span class="hint-touch">Tap a bar or marker for details; + and − zoom, then drag to pan.</span> Open in Perfetto: copy the trace, save it as <code>trace.json</code>, drop it on <code>ui.perfetto.dev</code>.
         </p>
         <button type="button" class="btn btn-quiet" onClick={copyTrace}>
           {copied === 'ok' ? 'Trace copied' : copied === 'fail' ? 'Copy blocked by the browser' : 'Copy trace JSON'}

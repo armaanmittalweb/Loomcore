@@ -75,9 +75,11 @@ RUN ctest --test-dir build -C RelWithDebInfo --output-on-failure
 COPY --from=models /opt/loomcore/models /opt/loomcore/models
 RUN pip install --no-cache-dir -r space/requirements.txt pytest==9.1.1 httpx==0.28.1 \
  && LOOMCORE_BENCH_RESULTS=/tmp/loomcore-bench python -m pytest -q -p no:cacheprovider bindings/python/tests space/tests
-# What the final stage takes: the libraries without their debug info.
+# What the final stage takes: the libraries without their debug info, and
+# ONNX Runtime once, under the SONAME the linker recorded (libonnxruntime.so.1).
 RUN mkdir -p /opt/stage/bin \
- && cp -P build/bin/*.so* build/bin/loomcore_bench /opt/stage/bin/ \
+ && cp build/bin/libloomcore_core.so build/bin/_loomcore*.so build/bin/loomcore_bench /opt/stage/bin/ \
+ && cp -L build/bin/libonnxruntime.so.1 /opt/stage/bin/libonnxruntime.so.1 \
  && strip --strip-debug /opt/stage/bin/libloomcore_core.so /opt/stage/bin/_loomcore*.so /opt/stage/bin/loomcore_bench \
  && ls -la /opt/stage/bin
 

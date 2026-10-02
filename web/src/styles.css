@@ -459,3 +459,22 @@ line.gl { stroke: var(--grid); stroke-width: 1 }
 .emb-axis i.neg { right: 50%; border-radius: 2px 0 0 2px }
 @media (max-width: 520px) { .emb-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) } }
 .claims-tbl { max-width: none }
+
+.hint-touch { display: none }
+@media (pointer: coarse) {
+  .hint-fine { display: none }
+  .hint-touch { display: inline }
+}
+
+.mix-n { white-space: nowrap }
+th.mix-col { padding-left: 14px }
+.mix { padding-left: 14px }
+.claims-tbl thead th.num { padding-right: 10px }
+@media (max-width: 520px) {
+  .lanes-col { display: none }
+  .mix-bar { width: 52px }
+  .claims-tbl thead { display: none }
+  .claims-tbl tr { display: grid; grid-template-columns: 26px minmax(0, 1fr); border-bottom: 1px solid var(--line); padding: 6px 0 }
+  .claims-tbl td { border-bottom: 0; padding: 2px 0 }
+  .claims-tbl td.claims-link { grid-column: 2; white-space: normal; overflow-wrap: anywhere }
+}

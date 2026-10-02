@@ -63,7 +63,8 @@ const R = {
   rejected: json('./fixtures/run-rejected.json'),
   shed: json('./fixtures/load-shed.json'),
 };
-const live = { ...R.health, cpu: 'Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz (2 logical CPUs)', version: '0.1.0+c170f91' };
+// "Live" in these shots serves the recorded responses as they are, machine included.
+const live = R.health;
 
 /** Mocks the Space. `routes` maps "METHOD /path" to a body, {status, body, delay}, 'hang' or 'down'. */
 async function mock(page, routes) {
@@ -87,7 +88,7 @@ async function mock(page, routes) {
 }
 const cors = () => ({ 'access-control-allow-origin': BASE, 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET, POST' });
 const spec = (o) => ({ __spec: true, ...o });
-const liveRoutes = (extra = {}) => ({ 'GET /health': live, 'GET /graph': R.graph, 'GET /bench': { ...R.bench, cpu: { model: 'Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz', logicalCpus: 2, flags: { avx2: true, avx512f: true, avx512_vnni: true, avx_vnni: false, amx_int8: false } } }, ...extra });
+const liveRoutes = (extra = {}) => ({ 'GET /health': live, 'GET /graph': R.graph, 'GET /bench': R.bench, ...extra });
 const waitLive = (p) => p.waitForSelector('.status.st-live');
 const wait = (p, ms = 350) => p.waitForTimeout(ms);
 const clickGo = (p) => p.click('.go .btn');

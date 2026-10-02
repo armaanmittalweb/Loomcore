@@ -192,7 +192,7 @@ export function Controls(p: Props) {
               value={s.loadBudget}
               onToggle={(on) => p.onChange({ loadBudgetOn: on })}
               onInput={(v) => p.onChange({ loadBudget: v })}
-              hint="Queueing counts against it, so a tight budget under load produces INT8 downgrades, rejects and cancels."
+              hint="Queueing counts against it: try 120 ms for INT8 downgrades, cancels and, once the planner has seen queueing, admission-control rejects."
             />
             <p class="field-hint">Every job uses the image picked under Run ({s.upload ? 'uploads apply to single runs only, so the first sample' : p.samples.find((x) => x.id === s.sample)?.caption.toLowerCase()}).</p>
           </>

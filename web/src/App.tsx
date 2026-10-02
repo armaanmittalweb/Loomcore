@@ -144,12 +144,12 @@ export function App({ client: injected }: { client?: Client }) {
   const [settings, setSettings] = useState<Settings>({
     sample: 'fox',
     upload: null,
-    budgetOn: true,
+    budgetOn: false,
     budget: 40,
     loadJobs: 48,
     concurrency: 12,
     loadBudgetOn: true,
-    loadBudget: 120,
+    loadBudget: 200,
     swapJobs: 48,
     swaps: 4,
   });
