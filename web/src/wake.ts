@@ -1,10 +1,9 @@
-// Connecting to the runtime. It runs on an always-on VM, so the normal case
-// is checking -> live within one request. When it is down or restarting
-// (a redeploy, a reboot), requests fail until it is back, so the console keeps
-// polling /health for a while:
+// Connecting to the runtime. It runs on Modal and scales to zero when idle, so
+// a first visit after a quiet spell starts a container (requests stall or fail
+// until it is up) and the console keeps polling /health for a while:
 //
-//   checking -> live                        (the normal case)
-//   checking -> waking -> loading -> live   (it was restarting)
+//   checking -> live                        (a container was already up)
+//   checking -> waking -> loading -> live   (it was starting)
 //   ...      -> asleep                      (no answer within the limit: down)
 //
 // `loading` means the server answered but the runtime is still loading
@@ -48,7 +47,7 @@ export function wakeReducer(state: WakeState, event: WakeEvent): WakeState {
   }
 }
 
-export const WAKE_LIMIT_MS = 60_000;
+export const WAKE_LIMIT_MS = 120_000;
 
 export interface WakeOptions {
   limitMs?: number;

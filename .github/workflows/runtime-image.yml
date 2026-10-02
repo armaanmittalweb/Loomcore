@@ -1,0 +1,35 @@
+name: runtime-image
+
+# Builds the live runtime's image (space/Dockerfile: model prep, the C++ build, ctest and the
+# server tests) on a Linux x86 runner and publishes it to GHCR, where Modal pulls it from.
+on:
+  push:
+    branches: [main]
+    paths: ['space/**', 'src/**', 'include/**', 'bindings/**', 'cmake/**', 'CMakeLists.txt', 'scripts/**', 'tests/**', 'configs/**', '.github/workflows/runtime-image.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: "{{defaultContext}}:space"
+          build-args: LOOMCORE_REF=main
+          push: true
+          tags: |
+            ghcr.io/armaanmittalweb/loomcore-runtime:latest
+            ghcr.io/armaanmittalweb/loomcore-runtime:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/armaanmittalweb/Loomcore
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

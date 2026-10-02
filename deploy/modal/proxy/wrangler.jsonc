@@ -1,0 +1,8 @@
+{
+  "name": "loomcore-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "routes": [{ "pattern": "loomcore-api.amittal.dev", "custom_domain": true }],
+  "vars": { "ORIGIN": "https://armaanmittalweb--loomcore-runtime.modal.run" },
+  "observability": { "enabled": true }
+}

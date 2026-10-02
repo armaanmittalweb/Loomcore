@@ -36,13 +36,14 @@ lane, a bar per ONNX Runtime call coloured by precision, batches, router decisio
 reasons, DAG edges, each job's life), then lets you run one job on a sample or your own image, run
 a load test, or hot-swap the graph under load, with the router policies toggled as you like.
 
-- **Runtime:** an Oracle Cloud Always Free Arm VM (Ampere A1, Neoverse N1, 4 OCPU / 24 GB, always
-  on) behind a Cloudflare Tunnel at `https://loomcore-api.amittal.dev`. The VM builds
-  `space/Dockerfile` natively (linux/arm64; it builds the same on x86_64): it clones this repo,
+- **Runtime:** [Modal](https://modal.com)'s free tier (2 cores, 4 GB, scaled to zero when idle),
+  behind a small Cloudflare Worker at `https://loomcore-api.amittal.dev` that forwards to it
+  ([deploy/modal](deploy/modal/)). GitHub Actions builds `space/Dockerfile` on Linux x86_64 and
+  publishes it to GHCR (`runtime-image.yml`; it builds the same on linux/arm64): it clones this repo,
   prepares the models, builds and tests exactly as CI's Linux job does (the image fails to build
   unless `ctest` passes), runs the binding and server tests, and serves `space/server.py`, a small
-  FastAPI layer over the Python bindings, on `127.0.0.1:7860` only. API:
-  [space/README.md](space/README.md); VM steps: [deploy/oracle](deploy/oracle/README.md).
+  FastAPI layer over the Python bindings. API: [space/README.md](space/README.md). A self-hosted
+  alternative (any Linux box behind a Cloudflare Tunnel): [deploy/oracle](deploy/oracle/README.md).
 - **Console:** `web/` (Vite, TypeScript, Preact), deployed to Vercel with `web/` as the root.
 - **The recorded run.** The console never opens on a spinner: it renders real results captured
   from the runtime (`web/src/recorded/*.json`, written by `npm run record` against a running

@@ -76,7 +76,7 @@ function StatusBar({ state, onRetry }: { state: WakeState; onRetry: () => void }
   const h = state.health;
   const text: Record<Phase, string> = {
     checking: 'Live runtime: checking',
-    waking: `Live runtime: reconnecting (${secs} s)`,
+    waking: `Live runtime: starting (${secs} s)`,
     loading: 'Live runtime: loading models',
     live: h ? `Live · ${shortCpu(h.cpu)}` : 'Live',
     asleep: 'Live runtime unreachable',
@@ -302,7 +302,7 @@ export function App({ client: injected }: { client?: Client }) {
 
       <footer class="foot">
         <p>
-          <a href={REPO}>github.com/armaanmittalweb/loomcore</a> · MIT licence · runtime on an always-on Arm VM (Oracle Cloud free tier)
+          <a href={REPO}>github.com/armaanmittalweb/loomcore</a> · MIT licence · runtime on Modal's free tier, started on demand
         </p>
         <p>
           Part of the Lab at <a href="https://www.amittal.dev">amittal.dev</a> · sample photos from Wikimedia Commons, credited in <a href={`${REPO}/blob/main/space/samples/LICENSES.md`}>LICENSES.md</a>

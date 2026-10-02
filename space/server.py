@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import calendar
+import hmac
 import io
 import json
 import locale
@@ -1004,6 +1005,7 @@ graph) behind a small JSON API. The console that drives it and draws what it did
 def create_app(live: LiveRuntime | None = None, start: bool = True):
     live = live or LiveRuntime()
     limiter = RateLimiter()
+    proxy_key = os.environ.get("LOOMCORE_PROXY_KEY", "")
     app = FastAPI(title="Loomcore live", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.live = live
 
@@ -1014,6 +1016,12 @@ def create_app(live: LiveRuntime | None = None, start: bool = True):
         # Behind the Cloudflare Tunnel, Cloudflare sets CF-Connecting-IP to the
         # visitor's address (and the server only listens on 127.0.0.1, so
         # nothing else can reach it to forge the header).
+        # On Modal, the loomcore-api Worker forwards each request and passes the visitor's
+        # address in X-Client-IP, vouched for by the key the two share.
+        if proxy_key and hmac.compare_digest(request.headers.get("x-proxy-key", ""), proxy_key):
+            relayed = request.headers.get("x-client-ip", "").strip()
+            if relayed:
+                return relayed
         cf = request.headers.get("cf-connecting-ip", "").strip()
         forwarded = request.headers.get("x-forwarded-for", "")
         return cf or forwarded.split(",")[0].strip() or (request.client.host if request.client else "unknown")

@@ -113,3 +113,12 @@ of the original plan.
   jobs, always with a glyph and words.
 - The INT8 MobileNetV2 is calibrated on random tensors, so its labels are unreliable; the console
   says so whenever a run used it.
+
+**Hosting, second move (2 Oct 2026):** the Oracle account could not be opened, so the runtime
+runs on Modal's Starter plan instead ($30 of compute a month, no card, so it cannot bill past
+that). GitHub Actions builds the image on Linux x86_64 and pushes it to GHCR; Modal pulls it and
+serves `create_app()` as an ASGI app (one container, 2 cores, 4 GB, scaled down after 5 idle
+minutes). A Worker at loomcore-api.amittal.dev forwards to Modal and passes the visitor's address
+in `X-Client-IP` with a shared key, which the rate limiter trusts only with that key. A cold start
+is a container start plus loading and warming the models, so the console waits up to 2 minutes
+before calling the runtime unreachable. `deploy/oracle/` stays as the self-hosted route.

@@ -309,6 +309,20 @@ def test_http_rate_limit(fake, monkeypatch):
     assert client.get("/health").status_code == 200  # GETs are counted separately
 
 
+def test_http_rate_limit_trusts_the_proxy_only_with_its_key(monkeypatch):
+    monkeypatch.setenv("LOOMCORE_PROXY_KEY", "k")
+    monkeypatch.setattr(server, "POSTS_PER_MINUTE", 1)
+    client = TestClient(server.create_app(FakeLive(), start=False))
+    body = {"jobs": 8, "swaps": 1}
+    proxied = lambda ip, key="k": {"x-proxy-key": key, "x-client-ip": ip}  # noqa: E731
+    assert client.post("/reload", json=body, headers=proxied("1.1.1.1")).status_code == 200
+    assert client.post("/reload", json=body, headers=proxied("2.2.2.2")).status_code == 200  # another visitor
+    assert client.post("/reload", json=body, headers=proxied("1.1.1.1")).status_code == 429
+    # A wrong key is not believed: the request counts against its real address.
+    assert client.post("/reload", json=body, headers=proxied("3.3.3.3", "x")).status_code == 200
+    assert client.post("/reload", json=body, headers=proxied("4.4.4.4", "x")).status_code == 429
+
+
 def test_http_upload_size_guard(fake):
     _, client = fake
     big = b"\xff\xd8\xff" + b"\0" * (server.MAX_UPLOAD_BYTES + 200_000)
