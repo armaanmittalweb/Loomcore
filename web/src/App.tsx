@@ -94,7 +94,7 @@ function StatusBar({ state, onRetry }: { state: WakeState; onRetry: () => void }
   );
 }
 
-function ThemeToggle() {
+export function ThemeToggle() {
   const [theme, setTheme] = useState<'light' | 'dark' | null>(null);
   useEffect(() => {
     let saved: string | null = null;

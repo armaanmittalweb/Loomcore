@@ -6,7 +6,8 @@
 // (src/recorded/*.json and scripts/fixtures/*.json).
 // Output: web/shots/*.png and web/shots/report.json (gitignored).
 // ONLY=name,name limits scenarios; VARIANTS=desktop-light,... limits variants;
-// NOBUILD=1 reuses dist/.
+// NOBUILD=1 reuses dist/. DPR=2 shoots desktop at 2x; LANDING=1 also saves the landing page's
+// step images (then `npm run landing-images`).
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +18,7 @@ const WEB = fileURLToPath(new URL('..', import.meta.url));
 const OUT = fileURLToPath(new URL('../shots/', import.meta.url));
 const PORT = 5178;
 const BASE = `http://localhost:${PORT}`;
+const CONSOLE = `${BASE}/console`;
 const SPACE = 'https://loomcore-api.amittal.dev';
 mkdirSync(OUT, { recursive: true });
 const win = process.platform === 'win32';
@@ -94,9 +96,16 @@ const wait = (p, ms = 350) => p.waitForTimeout(ms);
 const clickGo = (p) => p.click('.go .btn');
 
 const scenarios = [
+  ['00-landing', async (p, shot) => {
+    await p.goto(BASE);
+    await p.waitForSelector('.lp-hero-tl .bar');
+    await wait(p, 600);
+    await shot();
+    await shot({ suffix: 'full', full: true });
+  }],
   ['01-recorded', async (p, shot) => {
     await mock(p, { 'GET /health': 'hang' });
-    await p.goto(BASE);
+    await p.goto(CONSOLE);
     await p.waitForSelector('.p-timeline .bar');
     await wait(p, 600);
     await shot();
@@ -104,21 +113,21 @@ const scenarios = [
   }],
   ['02-waking', async (p, shot) => {
     await mock(p, {});
-    await p.goto(BASE);
+    await p.goto(CONSOLE);
     await p.waitForSelector('.status.st-waking');
     await wait(p, 1200);
     await shot();
   }],
   ['03-loading', async (p, shot) => {
     await mock(p, { 'GET /health': { ...live, ready: false, bench: 'pending' } });
-    await p.goto(BASE);
+    await p.goto(CONSOLE);
     await p.waitForSelector('.status.st-loading');
     await wait(p);
     await shot();
   }],
   ['04-live', async (p, shot) => {
     await mock(p, liveRoutes());
-    await p.goto(BASE);
+    await p.goto(CONSOLE);
     await waitLive(p);
     await wait(p, 500);
     await shot();
@@ -126,7 +135,7 @@ const scenarios = [
   }],
   ['05-running', async (p, shot) => {
     await mock(p, liveRoutes({ 'POST /run': spec({ body: R.skip, delay: 8000 }) }));
-    await p.goto(BASE);
+    await p.goto(CONSOLE);
     await waitLive(p);
     await p.click('label.sample:has-text("Lighthouse")');
     await clickGo(p);
@@ -136,7 +145,7 @@ const scenarios = [
   }],
   ['06-run-live', async (p, shot) => {
     await mock(p, liveRoutes({ 'POST /run': R.skip }));
-    await p.goto(BASE);
+    await p.goto(CONSOLE);
     await waitLive(p);
     await p.click('label.sample:has-text("Lighthouse")');
     await clickGo(p);
@@ -146,7 +155,7 @@ const scenarios = [
   }],
   ['07-run-cancelled', async (p, shot) => {
     await mock(p, liveRoutes({ 'POST /run': R.cancelled }));
-    await p.goto(BASE);
+    await p.goto(CONSOLE);
     await waitLive(p);
     await p.click('label.sample:has-text("Tabby")');
     await clickGo(p);
@@ -156,7 +165,7 @@ const scenarios = [
   }],
   ['08-run-rejected', async (p, shot) => {
     await mock(p, liveRoutes({ 'POST /run': R.rejected }));
-    await p.goto(BASE);
+    await p.goto(CONSOLE);
     await waitLive(p);
     await clickGo(p);
     await p.waitForSelector('.banner-bad');
@@ -165,7 +174,7 @@ const scenarios = [
   }],
   ['09-tooltip', async (p, shot) => {
     await mock(p, { 'GET /health': 'hang' });
-    await p.goto(BASE);
+    await p.goto(CONSOLE);
     await p.waitForSelector('.p-timeline .marker');
     await p.locator('.p-timeline .marker .hit').first().hover({ force: true });
     await p.waitForSelector('.tip');
@@ -177,7 +186,7 @@ const scenarios = [
   }],
   ['10-load', async (p, shot) => {
     await mock(p, liveRoutes({ 'POST /load': R.load }));
-    await p.goto(BASE);
+    await p.goto(CONSOLE);
     await waitLive(p);
     await p.click('#tab-load');
     await clickGo(p);
@@ -188,7 +197,7 @@ const scenarios = [
   }],
   ['11-load-shed', async (p, shot) => {
     await mock(p, liveRoutes({ 'POST /load': R.shed }));
-    await p.goto(BASE);
+    await p.goto(CONSOLE);
     await waitLive(p);
     await p.click('#tab-load');
     await clickGo(p);
@@ -198,7 +207,7 @@ const scenarios = [
   }],
   ['12-hotswap', async (p, shot) => {
     await mock(p, liveRoutes({ 'POST /reload': R.reload }));
-    await p.goto(BASE);
+    await p.goto(CONSOLE);
     await waitLive(p);
     await p.click('#tab-swap');
     await clickGo(p);
@@ -209,7 +218,7 @@ const scenarios = [
   }],
   ['13-error-busy', async (p, shot) => {
     await mock(p, liveRoutes({ 'POST /load': spec({ status: 429, body: { error: 'busy', message: 'the runtime is busy with another run; try again shortly', retryAfter: 4.2 } }) }));
-    await p.goto(BASE);
+    await p.goto(CONSOLE);
     await waitLive(p);
     await p.click('#tab-load');
     await clickGo(p);
@@ -219,7 +228,7 @@ const scenarios = [
   }],
   ['14-error-upload', async (p, shot) => {
     await mock(p, liveRoutes({ 'POST /run': spec({ status: 415, body: { error: 'unreadable_image', message: 'the image could not be decoded' } }) }));
-    await p.goto(BASE);
+    await p.goto(CONSOLE);
     await waitLive(p);
     await p.setInputFiles('.sample-upload input', { name: 'huge.png', mimeType: 'image/png', buffer: Buffer.alloc(3 * 1024 * 1024 + 7) });
     await p.waitForSelector('.samples .err');
@@ -231,7 +240,7 @@ const scenarios = [
   }],
   ['15-asleep', async (p, shot) => {
     await mock(p, {});
-    await p.goto(`${BASE}/?wakeLimit=1200&poll=250`);
+    await p.goto(`${CONSOLE}?wakeLimit=1200&poll=250`);
     await p.waitForSelector('.status.st-asleep');
     await wait(p);
     await shot();
@@ -245,13 +254,14 @@ const variants = [
   { name: 'phone-dark', viewport: { width: 390, height: 844 }, scheme: 'dark', mobile: true },
 ];
 
+const LANDING_STEPS = { '06-run-live': 'run', '10-load': 'load', '12-hotswap': 'swap' };
 const only = process.env.ONLY?.split(',');
 const onlyV = process.env.VARIANTS?.split(',');
 const browser = await chromium.launch();
 const report = { axe: {}, console: [], overflow: [] };
 
 for (const v of variants.filter((x) => !onlyV || onlyV.includes(x.name))) {
-  const ctx = await browser.newContext({ viewport: v.viewport, colorScheme: v.scheme, deviceScaleFactor: v.mobile ? 2 : 1, isMobile: !!v.mobile, hasTouch: !!v.mobile, reducedMotion: 'no-preference' });
+  const ctx = await browser.newContext({ viewport: v.viewport, colorScheme: v.scheme, deviceScaleFactor: v.mobile ? 2 : Number(process.env.DPR || 1), isMobile: !!v.mobile, hasTouch: !!v.mobile, reducedMotion: 'no-preference' });
   for (const [name, fn] of scenarios.filter(([n]) => !only || only.some((o) => n.includes(o)))) {
     const page = await ctx.newPage();
     page.on('console', (m) => {
@@ -264,6 +274,9 @@ for (const v of variants.filter((x) => !onlyV || onlyV.includes(x.name))) {
     const shot = async ({ suffix = '', full = false } = {}) => {
       const file = `${name}${suffix ? '-' + suffix : ''}-${v.name}.png`;
       await page.screenshot({ path: OUT + file, fullPage: full });
+      // LANDING=1: the Controls panel as each "Try it" step on the landing page shows it (scripts/landing-images.mjs).
+      const step = process.env.LANDING && !full && !suffix && LANDING_STEPS[name];
+      if (step) await page.locator('#controls').screenshot({ path: `${OUT}landing-${step}-${v.scheme}.png` });
       if (!axed) {
         axed = true;
         const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze();

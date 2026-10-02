@@ -43,7 +43,7 @@ const check = (ok, what) => {
   if (!ok) process.exitCode = 1;
 };
 
-await page.goto(BASE);
+await page.goto(`${BASE}/console`);
 await page.waitForSelector('.status.st-live', { timeout: 240_000 });
 check(true, `live: ${await page.textContent('.status')}`);
 

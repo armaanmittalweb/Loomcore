@@ -12,6 +12,7 @@
     "claims": "node scripts/claims.mjs",
     "record": "node scripts/record.mjs",
     "shots": "node scripts/shots.mjs",
+    "landing-images": "node scripts/landing-images.mjs",
     "e2e:live": "node scripts/e2e-live.mjs"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
     "@preact/preset-vite": "^2.10.6",
     "playwright": "^1.63.0",
     "preact-render-to-string": "^6.8.0",
+    "sharp": "^0.35.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
     "vitest": "^5.0.2"

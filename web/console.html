@@ -3,9 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Loomcore: run several ONNX models as one scheduled graph</title>
-    <meta name="description" content="Loomcore is a C++ runtime for multi-model ONNX inference: a router that decides skip, precision and lane per node, dynamic batching across jobs, deadlines that bind, and graph hot-swap under load with zero jobs lost. Try it live, call it over HTTP, or build it." />
-    <link rel="canonical" href="https://loomcore.amittal.dev/" />
+    <title>Loomcore console: run the real runtime</title>
+    <meta name="description" content="Watch a real C++ runtime schedule MobileNetV2 and bert_tiny as a dependency graph: a policy router, dynamic batching on two backend lanes, INT8 paths, binding deadlines and a zero-downtime graph hot-swap, drawn from its own trace. Run it yourself." />
+    <link rel="canonical" href="https://loomcore.amittal.dev/console" />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#f7f7f4" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0e0f11" media="(prefers-color-scheme: dark)" />
@@ -14,9 +14,9 @@
     <link rel="preload" href="/fonts/jetbrains-mono-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Loomcore" />
-    <meta property="og:title" content="Loomcore: run several ONNX models as one scheduled graph" />
+    <meta property="og:title" content="Loomcore console: run the real runtime" />
     <meta property="og:description" content="A real scheduler running real models: router decisions, batches, INT8 downgrades, deadline cancels and a graph hot-swap with zero jobs lost, drawn from the runtime's own trace." />
-    <meta property="og:url" content="https://loomcore.amittal.dev/" />
+    <meta property="og:url" content="https://loomcore.amittal.dev/console" />
     <meta property="og:image" content="https://loomcore.amittal.dev/og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -25,8 +25,8 @@
   <body>
     <div id="app"></div>
     <noscript>
-      <p>The timeline and the code tabs need JavaScript; everything else on this page is plain text.</p>
+      <p>The console draws and drives the live runtime, so it needs JavaScript. The text above is the recorded run it opens on.</p>
     </noscript>
-    <script type="module" src="/src/landing/main.tsx"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
