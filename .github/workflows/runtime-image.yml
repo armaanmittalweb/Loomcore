@@ -25,7 +25,9 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: "{{defaultContext}}:space"
-          build-args: LOOMCORE_REF=main
+          build-args: |
+            LOOMCORE_REF=main
+            LOOMCORE_SHA=${{ github.sha }}
           # The Dockerfile clones this repo; the job's token lets it while the repo is private.
           secrets: |
             GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}

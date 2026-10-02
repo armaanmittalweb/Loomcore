@@ -26,12 +26,16 @@
 
 ARG LOOMCORE_REPO=https://github.com/armaanmittalweb/loomcore.git
 ARG LOOMCORE_REF=live
+# An exact commit to build instead of the tip of LOOMCORE_REF. CI passes its own, which also
+# keys the layer cache to the source: a cached clone of a moving branch would go stale.
+ARG LOOMCORE_SHA=
 ARG PYTHON_IMAGE=python:3.11-slim-bookworm
 
 # ---------------------------------------------------------------------------
 FROM ${PYTHON_IMAGE} AS source
 ARG LOOMCORE_REPO
 ARG LOOMCORE_REF
+ARG LOOMCORE_SHA
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates \
  && rm -rf /var/lib/apt/lists/*
@@ -41,7 +45,13 @@ RUN --mount=type=secret,id=GITHUB_TOKEN,mode=0444,required=false \
     if [ -s /run/secrets/GITHUB_TOKEN ]; then \
       url="$(printf '%s' "$LOOMCORE_REPO" | sed "s#https://#https://x-access-token:$(cat /run/secrets/GITHUB_TOKEN)@#")"; \
     fi; \
-    git clone --depth 1 --branch "$LOOMCORE_REF" "$url" /opt/loomcore; \
+    if [ -n "$LOOMCORE_SHA" ]; then \
+      git init -q /opt/loomcore; \
+      git -C /opt/loomcore fetch -q --depth 1 "$url" "$LOOMCORE_SHA"; \
+      git -C /opt/loomcore checkout -q FETCH_HEAD; \
+    else \
+      git clone --depth 1 --branch "$LOOMCORE_REF" "$url" /opt/loomcore; \
+    fi; \
     git -C /opt/loomcore rev-parse --short HEAD > /opt/loomcore/.git-sha; \
     rm -rf /opt/loomcore/.git
 
