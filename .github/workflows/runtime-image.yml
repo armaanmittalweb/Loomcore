@@ -26,6 +26,9 @@ jobs:
         with:
           context: "{{defaultContext}}:space"
           build-args: LOOMCORE_REF=main
+          # The Dockerfile clones this repo; the job's token lets it while the repo is private.
+          secrets: |
+            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
           push: true
           tags: |
             ghcr.io/armaanmittalweb/loomcore-runtime:latest
