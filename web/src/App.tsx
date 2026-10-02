@@ -34,11 +34,11 @@ const captionOf = (id: string) => SAMPLES.find((s) => s.id === id)?.caption ?? i
 const recorded: Origin = { kind: 'recorded', meta: META };
 
 function initialResults(): Results {
-  const run = recordedRun as RunResult;
+  const run = recordedRun as unknown as RunResult;
   return {
     run: { data: run, origin: recorded, image: `/samples/${run.source}-448.jpg`, caption: captionOf(run.source) },
-    load: { data: recordedLoad as LoadResult, origin: recorded },
-    swap: { data: recordedReload as ReloadResult, origin: recorded },
+    load: { data: recordedLoad as unknown as LoadResult, origin: recorded },
+    swap: { data: recordedReload as unknown as ReloadResult, origin: recorded },
   };
 }
 

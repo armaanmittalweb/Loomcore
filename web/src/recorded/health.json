@@ -1,1 +1,1 @@
-{"ok":true,"ready":true,"version":"0.1.0","models":{"mobilenet":["FP32","INT8"],"bert_tiny":["FP32","INT8"]},"cpu":"11th Gen Intel(R) Core(TM) i5-1145G7 @ 2.60GHz (8 logical CPUs)","uptimeS":5,"busy":false,"bench":"ready"}
+{"ok":true,"ready":true,"version":"0.1.0+c8415a5","models":{"mobilenet":["FP32","INT8"],"bert_tiny":["FP32","INT8"]},"cpu":"Modal container, x86-64 (4 logical CPUs)","uptimeS":19,"busy":false,"bench":"ready"}
