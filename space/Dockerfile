@@ -79,7 +79,8 @@ RUN ctest --test-dir build -C RelWithDebInfo --output-on-failure
 # (real runtime, real models, every endpoint), so a broken server never ships.
 COPY --from=models /opt/loomcore/models /opt/loomcore/models
 RUN pip install --no-cache-dir -r space/requirements.txt pytest==9.1.1 httpx==0.28.1 \
- && LOOMCORE_BENCH_RESULTS=/tmp/loomcore-bench python -m pytest -q -p no:cacheprovider bindings/python/tests space/tests
+ && python -m pytest -q -p no:cacheprovider bindings/python/tests \
+ && LOOMCORE_BENCH_RESULTS=/tmp/loomcore-bench python -m pytest -q -p no:cacheprovider space/tests
 # What the final stage takes: the libraries without their debug info, and
 # ONNX Runtime once, under the SONAME the linker recorded (libonnxruntime.so.1).
 RUN mkdir -p /opt/stage/bin \
