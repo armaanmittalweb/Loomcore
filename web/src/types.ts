@@ -171,12 +171,19 @@ export interface GraphInfo {
   samples: { id: string; caption: string; author: string; licence: string; source: string }[];
 }
 
+/** x86: AVX2 / AVX-512 / VNNI / AMX. aarch64: NEON (asimd), the int8 dot
+ * product (asimddp: SDOT/UDOT), int8 matrix multiply (i8mm), bf16, SVE. */
 export interface CpuFlags {
-  avx2: boolean | null;
-  avx512f: boolean | null;
-  avx512_vnni: boolean | null;
-  avx_vnni: boolean | null;
-  amx_int8: boolean | null;
+  avx2?: boolean | null;
+  avx512f?: boolean | null;
+  avx512_vnni?: boolean | null;
+  avx_vnni?: boolean | null;
+  amx_int8?: boolean | null;
+  asimd?: boolean | null;
+  asimddp?: boolean | null;
+  i8mm?: boolean | null;
+  bf16?: boolean | null;
+  sve?: boolean | null;
 }
 
 export interface BenchRow {
@@ -192,7 +199,7 @@ export interface Bench {
   status: 'pending' | 'running' | 'ready' | 'failed' | 'unavailable' | 'skipped';
   ranAt?: string;
   rows?: BenchRow[];
-  cpu?: { model: string; logicalCpus: number; flags: CpuFlags | null };
+  cpu?: { arch?: string; model: string; logicalCpus: number; flags: CpuFlags | null };
   reason?: string;
   warmup?: number;
   iters?: number;

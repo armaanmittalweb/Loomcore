@@ -89,11 +89,11 @@ function lockReason(phase: Phase): string | null {
     case 'checking':
       return 'Checking the live runtime…';
     case 'waking':
-      return 'The live runtime is waking up (about a minute). Controls unlock when it is up; the recorded run stays on screen meanwhile.';
+      return 'The live runtime is not answering yet (it may be restarting). Controls unlock when it is back; the recorded run stays on screen.';
     case 'loading':
       return 'The live runtime is loading its models. A few seconds more.';
     case 'asleep':
-      return 'The live runtime did not answer. The recorded runs above are real; retry from the status bar.';
+      return 'The live runtime is down or unreachable. The recorded runs above are real; retry from the status bar.';
   }
 }
 

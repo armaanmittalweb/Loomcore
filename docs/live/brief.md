@@ -48,6 +48,24 @@ Stack: Vite + TypeScript + Preact (or React), plain CSS with tokens. `vercel.jso
 
 ## Decisions made while building it (2 Oct 2026)
 
+**Hosting moved off Hugging Face (2 Oct 2026).** Hugging Face now requires PRO ($9 a month) for
+Docker Spaces, which breaks the free-hosting rule, so the runtime runs on an Oracle Cloud Always
+Free Arm VM instead: Ampere A1 (Neoverse N1, aarch64), 4 OCPU / 24 GB, Ubuntu 24.04, always on.
+The VM builds the same `space/Dockerfile` natively and runs it with `deploy/oracle/compose.yaml`
+(restart always, bound to `127.0.0.1:7860`), published through a Cloudflare Tunnel at
+`https://loomcore-api.amittal.dev`. Consequences: the console's default API URL and CSP point
+there; "waking up, about a minute" is no longer the normal case, so the console connects in the
+background and keeps a short reconnecting/unreachable state for when the box is down;
+`cmake/FetchOnnxRuntime.cmake` fetches `onnxruntime-linux-aarch64` on aarch64 (same library layout
+and `libonnxruntime.so.1` SONAME); every pinned wheel exists for aarch64 cp311 (torch 2.14.1 from
+the CPU index, onnx 1.17.0, onnxruntime 1.20.1, numpy 2.2.6, pillow 12.3.0 and the rest are pure
+Python); `/health` and `/bench` report the architecture, the core from `CPU implementer`/`CPU part`
+(named by `LOOMCORE_CPU_NAME`, "Ampere Altra" on the VM) and the Arm features that explain INT8
+(asimd, asimddp = SDOT/UDOT, i8mm, bf16, sve); the benchmark panel shows those flags on Arm and
+words its explanation from the measured ratio, not from an assumed direction; the rate limit keys
+on Cloudflare's `CF-Connecting-IP`. The Hugging Face rows above and below are kept as the record
+of the original plan.
+
 **Runtime and bindings**
 
 - The Space repository holds only `space/README.md` and `space/Dockerfile`; the image clones this

@@ -27,6 +27,26 @@ function hasVnni(f: CpuFlags | null | undefined): boolean | null {
   return false;
 }
 
+const isArm = (bench: Bench) => bench.cpu?.arch === 'aarch64';
+
+/** On Arm, ONNX Runtime's MLAS runs int8 GEMM and convolution on SDOT/UDOT
+ * (asimddp), or SMMLA with i8mm. States what the measured ratio shows. */
+function explainArm(bench: Bench, speed: number): string {
+  const f = bench.cpu?.flags ?? {};
+  const how = f.i8mm
+    ? 'the int8 matrix-multiply instructions (i8mm, SMMLA) and the int8 dot product (SDOT/UDOT)'
+    : f.asimddp
+      ? 'the int8 dot-product instructions (SDOT/UDOT, the asimddp feature)'
+      : 'plain NEON, since this CPU reports no int8 dot product (asimddp)';
+  const outcome =
+    speed >= 1.02
+      ? `INT8 MobileNetV2 measures ${ratio(speed)} as fast as FP32: the int8 kernels outrun the Quantize/Dequantize nodes static QDQ quantization adds`
+      : speed <= 0.98
+        ? `INT8 MobileNetV2 measures ${ratio(speed)} FP32, slower: at batch size 1 on one thread the Quantize/Dequantize nodes static QDQ quantization adds cost more than the int8 kernels save`
+        : `INT8 MobileNetV2 measures ${ratio(speed)} FP32, no real difference: the int8 kernels' saving and the cost of the Quantize/Dequantize nodes static QDQ quantization adds about cancel out at batch size 1 on one thread`;
+  return `On this Arm CPU, ONNX Runtime's int8 GEMM and convolution kernels (MLAS) use ${how}. ${outcome}. The reference Ryzen, without VNNI, measured 0.93x. Whether INT8 pays is hardware-dependent, which is why precision is a runtime policy rather than a constant.`;
+}
+
 /** Why INT8 MobileNetV2 came out the way it did on this CPU, in one paragraph. */
 export function explain(bench: Bench): string {
   const rows = bench.rows ?? [];
@@ -34,6 +54,7 @@ export function explain(bench: Bench): string {
   const i8 = p50(rows, 'mobilenetv2', 'INT8');
   if (!fp || !i8) return '';
   const speed = fp / i8;
+  if (isArm(bench)) return explainArm(bench, speed);
   const vnni = hasVnni(bench.cpu?.flags);
   const faster = speed >= 1.02;
   const slower = speed <= 0.98;
@@ -73,7 +94,7 @@ function PairBars({ fp, i8 }: { fp?: number; i8?: number }) {
 export function BenchPanel({ bench, origin }: { bench: Bench; origin: Origin }) {
   const rows: BenchRow[] = bench.rows ?? [];
   const cpu = bench.cpu;
-  const where = origin.kind === 'live' ? 'This Space' : 'Recorded machine';
+  const where = origin.kind === 'live' ? 'The live runtime' : 'Recorded machine';
   return (
     <Panel id="bench" kicker="Benchmark" title="FP32 vs INT8, measured" tag={<SourceTag origin={origin} />} class="p-bench">
       {bench.status !== 'ready' ? (
@@ -82,12 +103,22 @@ export function BenchPanel({ bench, origin }: { bench: Bench; origin: Origin }) 
         <>
           <p class="bench-cpu">
             <span class="mono">{cpu ? shortCpu(cpu.model) : 'unknown CPU'}</span>
-            <span class="flags-row">
-              <Flag name="AVX2" on={cpu?.flags?.avx2} />
-              <Flag name="AVX-512" on={cpu?.flags?.avx512f} />
-              <Flag name="AVX-512 VNNI" on={cpu?.flags?.avx512_vnni} />
-              <Flag name="AVX-VNNI" on={cpu?.flags?.avx_vnni} />
-            </span>
+            {isArm(bench) ? (
+              <span class="flags-row">
+                <Flag name="NEON" on={cpu?.flags?.asimd} />
+                <Flag name="dot product (SDOT)" on={cpu?.flags?.asimddp} />
+                <Flag name="i8mm" on={cpu?.flags?.i8mm} />
+                <Flag name="BF16" on={cpu?.flags?.bf16} />
+                <Flag name="SVE" on={cpu?.flags?.sve} />
+              </span>
+            ) : (
+              <span class="flags-row">
+                <Flag name="AVX2" on={cpu?.flags?.avx2} />
+                <Flag name="AVX-512" on={cpu?.flags?.avx512f} />
+                <Flag name="AVX-512 VNNI" on={cpu?.flags?.avx512_vnni} />
+                <Flag name="AVX-VNNI" on={cpu?.flags?.avx_vnni} />
+              </span>
+            )}
           </p>
           <table class="tbl bench-tbl">
             <caption class="sr-only">p50 latency per inference, milliseconds, single item, one thread per session</caption>

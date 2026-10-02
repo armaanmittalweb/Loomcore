@@ -1,7 +1,7 @@
 // `npm run record -- [--from <space url>] [--os "<os label>"]`
 //
-// Captures real results from a running Loomcore Space (the HF Space, or
-// `python space/server.py` locally) into src/recorded/, which the console
+// Captures real results from a running Loomcore server (the live one at
+// https://loomcore-api.amittal.dev, or `python space/server.py` locally) into src/recorded/, which the console
 // renders on open while it wakes the live runtime. Also writes the extra runs
 // the screenshot script serves for its error states to scripts/fixtures/.
 // Nothing here is synthesised: every file is a response body, as returned.
@@ -63,7 +63,7 @@ const reload = await call('/reload', { jobs: 48, swaps: 4 });
 
 const meta = {
   recordedAt: new Date().toISOString(),
-  source: BASE.includes('hf.space') ? 'space' : 'local',
+  source: /localhost|127\.0\.0\.1/.test(BASE) ? 'local' : 'space',
   machine: health.cpu,
   os: OS || undefined,
   version: health.version,

@@ -1,10 +1,11 @@
-// The Space client. Every failure becomes a typed SpaceError the UI can word
-// precisely: unreachable (asleep, waking or offline), busy (429 with a retry
+// The runtime client (space/server.py, served at loomcore-api.amittal.dev).
+// Every failure becomes a typed SpaceError the UI can word precisely:
+// unreachable (down, restarting or offline), busy (429 with a retry
 // time), warming (the server is up but still loading models), timeout, or a
 // request the server refused (with its own message).
 import type { Bench, GraphInfo, Health, LoadResult, PolicyName, ReloadResult, RunResult } from './types';
 
-export const SPACE_URL: string = (import.meta.env?.VITE_SPACE_URL as string | undefined) || 'https://armaanmittalweb-loomcore.hf.space';
+export const SPACE_URL: string = (import.meta.env?.VITE_SPACE_URL as string | undefined) || 'https://loomcore-api.amittal.dev';
 
 export type Failure =
   | { kind: 'unreachable' }
@@ -67,7 +68,7 @@ export function createClient(base: string = SPACE_URL, fetchImpl: Fetch = (...a)
     try {
       body = await res.json();
     } catch {
-      body = null; // a sleeping Space answers with an HTML page, not JSON
+      body = null; // a proxy's error page (the tunnel with the server down) is HTML, not JSON
     }
     if (res.ok && body && typeof body === 'object') return body as T;
     const b = (body && typeof body === 'object' ? body : {}) as { error?: string; message?: string; retryAfter?: number };
@@ -116,9 +117,9 @@ export function describeFailure(err: unknown): string {
   const f = err.failure;
   switch (f.kind) {
     case 'unreachable':
-      return 'Could not reach the live runtime. It may be asleep or restarting.';
+      return 'Could not reach the live runtime. It may be restarting; try again in a moment.';
     case 'timeout':
-      return 'The runtime took too long to answer. It may be waking up; try again in a moment.';
+      return 'The runtime took too long to answer. Try again in a moment.';
     case 'busy':
       return `${f.message.replace(/\.$/, '')}. Try again in ${Math.ceil(f.retryAfter)} s.`;
     case 'warming':

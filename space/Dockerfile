@@ -1,9 +1,13 @@
 # syntax=docker/dockerfile:1.7
 #
-# Loomcore live: the Hugging Face Space image (sdk: docker, app_port 7860).
+# Loomcore live: the runtime server image (port 7860). Runs on the Oracle
+# Cloud Always Free Arm VM (linux/arm64, deploy/oracle/) and builds the same
+# on x86_64: nothing below is architecture-specific (multi-arch python
+# images, the CPU torch index serves both, CMake fetches the matching ONNX
+# Runtime archive).
 #
-# The Space repository holds only this file and README.md; the image clones
-# the Loomcore source at LOOMCORE_REF and builds the real runtime from it:
+# The image clones the Loomcore source at LOOMCORE_REF and builds the real
+# runtime from it:
 #
 #   source  clone the repo (a GITHUB_TOKEN build secret is used if present,
 #           for a private repo)
@@ -15,9 +19,10 @@
 #   final   python:3.11-slim with the built libraries, the bindings, the
 #           models and the server; no compiler, no torch
 #
-# Build locally from anywhere (the build context is unused):
-#   docker build -t loomcore-space -f space/Dockerfile space
-#   docker run --rm -p 7860:7860 loomcore-space
+# Build from anywhere (the build context is unused):
+#   docker build -t loomcore-runtime -f space/Dockerfile space
+#   docker run --rm -p 127.0.0.1:7860:7860 loomcore-runtime
+# or, on the VM, docker compose -f deploy/oracle/compose.yaml up -d --build
 
 ARG LOOMCORE_REPO=https://github.com/armaanmittalweb/loomcore.git
 ARG LOOMCORE_REF=live

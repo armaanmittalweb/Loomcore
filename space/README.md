@@ -1,17 +1,6 @@
----
-title: Loomcore
-colorFrom: gray
-colorTo: blue
-sdk: docker
-app_port: 7860
-pinned: false
-license: mit
-short_description: Real C++ runtime scheduling ONNX models as a graph
----
+# Loomcore runtime server
 
-# Loomcore runtime
-
-This Space builds and runs [Loomcore](https://github.com/armaanmittalweb/loomcore), a C++ runtime that
+This image builds and runs [Loomcore](https://github.com/armaanmittalweb/loomcore), a C++ runtime that
 loads several ONNX models as a dependency graph (MobileNetV2, then a confidence gate, then bert_tiny),
 schedules them with dynamic batching across two backend lanes, routes each job through a chain of
 policies, enforces deadlines, and hot-swaps the whole graph under load. The console that drives it and
@@ -20,6 +9,9 @@ draws what it did is at **[loomcore.amittal.dev](https://loomcore.amittal.dev)**
 Nothing here is a mock: `/run` executes the real `loomcore::Runtime` through its Python bindings, and
 every response carries the Chrome Trace Event JSON the runtime's own exporter produced from that
 request's log.
+
+It runs on an Oracle Cloud Always Free Arm VM (Ampere A1, Neoverse N1), always on, behind a
+Cloudflare Tunnel at `https://loomcore-api.amittal.dev`; see [deploy/oracle](../deploy/oracle/README.md).
 
 ## API
 
@@ -41,7 +33,7 @@ cancellation, precision planning and EDF lane scoring are on, so a `timeBudgetMs
 planner judges undeliverable is rejected before anything runs, and one that runs out of time is
 cancelled mid-inference.
 
-Guards: one `/load` or `/reload` at a time (others get `429` with `retryAfter`), one job-running request
+Guards (the rate limit keys on Cloudflare's `CF-Connecting-IP`): one `/load` or `/reload` at a time (others get `429` with `retryAfter`), one job-running request
 in the runtime at a time, 20 POSTs a minute per IP, request timeouts (25 s for `/run`, 90 s for the
 others), and nothing written outside `/tmp`.
 

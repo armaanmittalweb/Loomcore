@@ -1,0 +1,42 @@
+# The Loomcore runtime on the Oracle Cloud Always Free Arm VM.
+#   docker compose -f deploy/oracle/compose.yaml up -d --build
+# Builds space/Dockerfile natively on the VM (linux/arm64), listens on
+# 127.0.0.1:7860 only, and is reached from outside solely through the
+# Cloudflare Tunnel (see README.md here). Restarts on failure and on boot.
+name: loomcore
+
+services:
+  runtime:
+    build:
+      context: ../../space
+      dockerfile: Dockerfile
+      args:
+        # The branch or tag the image clones and builds.
+        LOOMCORE_REF: ${LOOMCORE_REF:-live}
+      # Uncomment (and create the file) only if the GitHub repo is private:
+      # secrets: [GITHUB_TOKEN]
+    image: loomcore-runtime:latest
+    container_name: loomcore-runtime
+    restart: always
+    ports:
+      - "127.0.0.1:7860:7860"
+    environment:
+      # /proc/cpuinfo on Arm names only the core (Neoverse N1); this names the chip.
+      LOOMCORE_CPU_NAME: "Ampere Altra"
+    # The C++ runtime sizes its CPU lane from the cores it sees; no limits needed
+    # on a dedicated VM. Keep the logs from growing without bound.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+# secrets:
+#   GITHUB_TOKEN:
+#     file: ./github_token.txt

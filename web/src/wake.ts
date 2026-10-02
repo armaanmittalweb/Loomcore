@@ -1,10 +1,11 @@
-// Waking the Space. A free Hugging Face Space sleeps after 48 h idle; the
-// first request starts it, and until it is up every request fails (its
-// placeholder page has no CORS headers). So the console polls /health:
+// Connecting to the runtime. It runs on an always-on VM, so the normal case
+// is checking -> live within one request. When it is down or restarting
+// (a redeploy, a reboot), requests fail until it is back, so the console keeps
+// polling /health for a while:
 //
-//   checking -> live                        (it was awake)
-//   checking -> waking -> loading -> live   (it was asleep: about a minute)
-//   ...      -> asleep                      (no answer within the limit)
+//   checking -> live                        (the normal case)
+//   checking -> waking -> loading -> live   (it was restarting)
+//   ...      -> asleep                      (no answer within the limit: down)
 //
 // `loading` means the server answered but the runtime is still loading
 // models and warming up. The reducer is pure; `wake()` drives it.
@@ -47,7 +48,7 @@ export function wakeReducer(state: WakeState, event: WakeEvent): WakeState {
   }
 }
 
-export const WAKE_LIMIT_MS = 180_000;
+export const WAKE_LIMIT_MS = 60_000;
 
 export interface WakeOptions {
   limitMs?: number;

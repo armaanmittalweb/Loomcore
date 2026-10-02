@@ -17,7 +17,7 @@ const WEB = fileURLToPath(new URL('..', import.meta.url));
 const OUT = fileURLToPath(new URL('../shots/', import.meta.url));
 const PORT = 5178;
 const BASE = `http://localhost:${PORT}`;
-const SPACE = 'https://armaanmittalweb-loomcore.hf.space';
+const SPACE = 'https://loomcore-api.amittal.dev';
 mkdirSync(OUT, { recursive: true });
 const win = process.platform === 'win32';
 const npx = win ? 'npx.cmd' : 'npx';

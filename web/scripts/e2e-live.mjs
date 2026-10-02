@@ -2,8 +2,8 @@
 // runtime, with no mocks: waits for "Live", runs one job, a load test and a
 // hot-swap through the UI, and checks each result came back live with a
 // trace drawn. Use it against `python space/server.py` (default
-// http://127.0.0.1:7860) or, after deploying, the Space itself. Serves the
-// console on port 5177, an origin the Space's CORS allows.
+// http://127.0.0.1:7860) or, after deploying, https://loomcore-api.amittal.dev.
+// Serves the console on port 5177, an origin the server's CORS allows.
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';

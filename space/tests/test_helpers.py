@@ -167,12 +167,48 @@ def test_parse_cpuinfo_reads_model_and_int8_flags():
             "flags\t\t: fpu sse2 avx avx2 avx512f avx512_vnni\n\n"
             "processor\t: 1\nmodel name\t: Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz\nflags\t\t: fpu\n")
     info = server.parse_cpuinfo(text)
+    assert info["arch"] == "x86_64"
     assert info["model"].startswith("Intel(R) Xeon(R) Platinum 8375C")
     assert info["logicalCpus"] == 2
     assert info["flags"] == {"avx2": True, "avx512f": True, "avx512_vnni": True, "avx_vnni": False,
                              "amx_int8": False}
     zen3 = server.parse_cpuinfo("model name : AMD Ryzen 9 6900HX\nflags : avx avx2 fma\n")
     assert zen3["flags"]["avx2"] and not zen3["flags"]["avx512f"] and not zen3["flags"]["avx512_vnni"]
+
+
+ORACLE_A1_CPUINFO = """processor	: 0
+BogoMIPS	: 50.00
+Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm lrcpc dcpop asimddp ssbs
+CPU implementer	: 0x41
+CPU architecture: 8
+CPU variant	: 0x3
+CPU part	: 0xd0c
+CPU revision	: 1
+
+processor	: 1
+BogoMIPS	: 50.00
+Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm lrcpc dcpop asimddp ssbs
+CPU implementer	: 0x41
+CPU architecture: 8
+CPU variant	: 0x3
+CPU part	: 0xd0c
+CPU revision	: 1
+"""
+
+
+def test_parse_cpuinfo_reads_an_aarch64_neoverse_n1():
+    info = server.parse_cpuinfo(ORACLE_A1_CPUINFO)
+    assert info["arch"] == "aarch64"
+    assert info["model"] == "Arm Neoverse N1"
+    assert info["logicalCpus"] == 2
+    # N1 has the int8 dot product (SDOT/UDOT) but not i8mm, bf16 or SVE.
+    assert info["flags"] == {"asimd": True, "asimddp": True, "i8mm": False, "bf16": False, "sve": False}
+    named = server.parse_cpuinfo(ORACLE_A1_CPUINFO, "Ampere Altra")
+    assert named["model"] == "Ampere Altra (Neoverse N1)"
+    v2 = server.parse_cpuinfo("processor : 0\nFeatures : fp asimd asimddp i8mm bf16 sve sve2\nCPU implementer : 0x41\nCPU part : 0xd4f\n")
+    assert v2["model"] == "Arm Neoverse V2" and v2["flags"]["i8mm"] and v2["flags"]["sve"]
+    unknown = server.parse_cpuinfo("processor : 0\nFeatures : fp asimd\nCPU implementer : 0x51\nCPU part : 0x001\n")
+    assert unknown["model"] == "Arm CPU part 0x001" and not unknown["flags"]["asimddp"]
 
 
 def test_run_bench_reports_unavailable_without_the_binary(monkeypatch):

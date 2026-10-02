@@ -355,13 +355,49 @@ def parse_bench_output(text: str) -> list[dict[str, Any]]:
     return rows
 
 
-def parse_cpuinfo(text: str) -> dict[str, Any]:
+# Arm core names by (implementer, part) from /proc/cpuinfo; the ones a cloud
+# VM or a recent laptop is likely to report.
+ARM_PARTS = {
+    ("0x41", "0xd03"): "Cortex-A53", ("0x41", "0xd08"): "Cortex-A72", ("0x41", "0xd0b"): "Cortex-A76",
+    ("0x41", "0xd0c"): "Neoverse N1", ("0x41", "0xd40"): "Neoverse V1", ("0x41", "0xd49"): "Neoverse N2",
+    ("0x41", "0xd4f"): "Neoverse V2", ("0x41", "0xd8e"): "Neoverse N3", ("0x41", "0xd84"): "Neoverse V3",
+    ("0xc0", "0xac3"): "AmpereOne", ("0xc0", "0xac4"): "AmpereOne",
+}
+
+
+def parse_cpuinfo(text: str, name_override: str | None = None) -> dict[str, Any]:
+    """x86 reports `model name` and `flags`; aarch64 reports `Features` and
+    `CPU implementer`/`CPU part` instead. Each architecture gets the flags that
+    explain its INT8 result: VNNI/AMX on x86, the int8 dot-product (asimddp,
+    SDOT/UDOT) and matrix-multiply (i8mm) instructions on Arm."""
+    cores = len(re.findall(r"^processor\s*:", text, re.M))
+    features = re.search(r"^Features\s*:\s*(.+)$", text, re.M)
+    if features:
+        feats = set(features.group(1).split())
+        implementer = re.search(r"^CPU implementer\s*:\s*(\S+)", text, re.M)
+        part = re.search(r"^CPU part\s*:\s*(\S+)", text, re.M)
+        key = (implementer.group(1).lower() if implementer else "", part.group(1).lower() if part else "")
+        core = ARM_PARTS.get(key)
+        core_name = core or (f"Arm CPU part {key[1]}" if key[1] else "Arm CPU")
+        model = f"{name_override} ({core_name})" if name_override else (f"Arm {core}" if core else core_name)
+        return {
+            "arch": "aarch64",
+            "model": model,
+            "logicalCpus": cores or os.cpu_count(),
+            "flags": {
+                "asimd": "asimd" in feats,
+                "asimddp": "asimddp" in feats,
+                "i8mm": "i8mm" in feats,
+                "bf16": "bf16" in feats,
+                "sve": "sve" in feats,
+            },
+        }
     model = re.search(r"^model name\s*:\s*(.+)$", text, re.M)
     flags_line = re.search(r"^flags\s*:\s*(.+)$", text, re.M)
     flags = set(flags_line.group(1).split()) if flags_line else set()
-    cores = len(re.findall(r"^processor\s*:", text, re.M))
     return {
-        "model": model.group(1).strip() if model else platform.processor() or "unknown CPU",
+        "arch": "x86_64",
+        "model": name_override or (model.group(1).strip() if model else platform.processor() or "unknown CPU"),
         "logicalCpus": cores or os.cpu_count(),
         "flags": {
             "avx2": "avx2" in flags,
@@ -375,11 +411,14 @@ def parse_cpuinfo(text: str) -> dict[str, Any]:
 
 def detect_cpu() -> dict[str, Any]:
     try:
-        return parse_cpuinfo(Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace"))
+        # LOOMCORE_CPU_NAME names the chip when /proc/cpuinfo can't (Arm reports
+        # only the core): e.g. "Ampere Altra" on an Oracle A1 VM.
+        return parse_cpuinfo(Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace"),
+                             os.environ.get("LOOMCORE_CPU_NAME") or None)
     except OSError:
         pass
-    info: dict[str, Any] = {"model": platform.processor() or "unknown CPU", "logicalCpus": os.cpu_count(),
-                            "flags": None}
+    info: dict[str, Any] = {"arch": platform.machine().lower() or "unknown", "model": platform.processor() or "unknown CPU",
+                            "logicalCpus": os.cpu_count(), "flags": None}
     if sys.platform == "win32":
         try:
             import winreg  # noqa: PLC0415
@@ -972,8 +1011,12 @@ def create_app(live: LiveRuntime | None = None, start: bool = True):
         threading.Thread(target=live.start, name="loomcore-start", daemon=True).start()
 
     def client_ip(request: Request) -> str:
+        # Behind the Cloudflare Tunnel, Cloudflare sets CF-Connecting-IP to the
+        # visitor's address (and the server only listens on 127.0.0.1, so
+        # nothing else can reach it to forge the header).
+        cf = request.headers.get("cf-connecting-ip", "").strip()
         forwarded = request.headers.get("x-forwarded-for", "")
-        return forwarded.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+        return cf or forwarded.split(",")[0].strip() or (request.client.host if request.client else "unknown")
 
     def error(status: int, code: str, message: str, headers: dict | None = None, **extra: Any):
         return JSONResponse({"error": code, "message": message, **extra}, status_code=status, headers=headers)

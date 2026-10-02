@@ -20,7 +20,6 @@ import recordedGraph from './recorded/graph.json';
 
 const META = recordedMeta as RecordingMeta;
 const REPO = 'https://github.com/armaanmittalweb/loomcore';
-const SPACE_PAGE = 'https://huggingface.co/spaces/armaanmittalweb/loomcore';
 
 type Held<T> = { data: T; origin: Origin; image?: string | null; caption?: string; fresh?: number };
 
@@ -77,13 +76,13 @@ function StatusBar({ state, onRetry }: { state: WakeState; onRetry: () => void }
   const h = state.health;
   const text: Record<Phase, string> = {
     checking: 'Live runtime: checking',
-    waking: `Live runtime: waking up, about a minute (${secs} s)`,
+    waking: `Live runtime: reconnecting (${secs} s)`,
     loading: 'Live runtime: loading models',
     live: h ? `Live · ${shortCpu(h.cpu)}` : 'Live',
-    asleep: 'Live runtime asleep or unreachable',
+    asleep: 'Live runtime unreachable',
   };
   return (
-    <div class={`status st-${state.phase}`} role="status" title={h ? `Space ${h.version}, ${h.cpu}` : undefined}>
+    <div class={`status st-${state.phase}`} role="status" title={h ? `Runtime ${h.version}, ${h.cpu}` : undefined}>
       <i class="lamp" aria-hidden="true" />
       <span>{text[state.phase]}</span>
       {state.phase === 'asleep' && (
@@ -157,7 +156,7 @@ export function App({ client: injected }: { client?: Client }) {
   const phaseRef = useRef<Phase>('checking');
   phaseRef.current = wakeState.phase;
 
-  // Wake the Space in the background; the recorded run is on screen meanwhile.
+  // Connect to the runtime in the background; the recorded run is on screen meanwhile.
   useEffect(() => {
     const ctl = new AbortController();
     const q = new URLSearchParams(location.search);
@@ -265,7 +264,7 @@ export function App({ client: injected }: { client?: Client }) {
           >
             <p class="panel-sub">
               {held.origin.kind === 'recorded'
-                ? `${recordedLine(META)} ${phaseRef.current === 'live' ? 'Run it yourself from Controls.' : 'The live runtime is starting in the background.'}`
+                ? `${recordedLine(META)} ${phaseRef.current === 'live' ? 'Run it yourself from Controls.' : 'Connecting to the live runtime.'}`
                 : `Live, ${clock(held.origin.at)}. Each bar is one real ONNX Runtime call, placed where the scheduler ran it.`}
             </p>
             <Timeline key={`${mode}-${held.fresh ?? 0}`} trace={trace} swaps={swaps} animate={!!held.fresh} busy={busyText} label={`${what}: ${title}`} />
@@ -303,7 +302,7 @@ export function App({ client: injected }: { client?: Client }) {
 
       <footer class="foot">
         <p>
-          <a href={REPO}>github.com/armaanmittalweb/loomcore</a> · MIT licence · runtime on <a href={SPACE_PAGE}>Hugging Face Spaces</a> (free CPU, sleeps when idle)
+          <a href={REPO}>github.com/armaanmittalweb/loomcore</a> · MIT licence · runtime on an always-on Arm VM (Oracle Cloud free tier)
         </p>
         <p>
           Part of the Lab at <a href="https://www.amittal.dev">amittal.dev</a> · sample photos from Wikimedia Commons, credited in <a href={`${REPO}/blob/main/space/samples/LICENSES.md`}>LICENSES.md</a>
