@@ -2,6 +2,7 @@
 no C++ build needed: the HTTP tests drive create_app() over a fake runtime."""
 import io
 import json
+import os
 
 import numpy as np
 import pytest
@@ -209,6 +210,13 @@ def test_parse_cpuinfo_reads_an_aarch64_neoverse_n1():
     assert v2["model"] == "Arm Neoverse V2" and v2["flags"]["i8mm"] and v2["flags"]["sve"]
     unknown = server.parse_cpuinfo("processor : 0\nFeatures : fp asimd\nCPU implementer : 0x51\nCPU part : 0x001\n")
     assert unknown["model"] == "Arm CPU part 0x001" and not unknown["flags"]["asimddp"]
+
+
+def test_available_cpus_follows_the_allotment(monkeypatch):
+    monkeypatch.setenv("LOOMCORE_CPUS", "4")
+    assert server.available_cpus() == 4 and server.cpu_lane_threads() == 2
+    monkeypatch.setenv("LOOMCORE_CPUS", "nope")
+    assert server.available_cpus() == (os.cpu_count() or 2)
 
 
 def test_run_bench_reports_unavailable_without_the_binary(monkeypatch):

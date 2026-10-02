@@ -410,12 +410,27 @@ def parse_cpuinfo(text: str, name_override: str | None = None) -> dict[str, Any]
     }
 
 
+def available_cpus() -> int:
+    """Logical CPUs this process may use. A sandboxed container (Modal runs
+    gVisor) reports the host's count, so LOOMCORE_CPUS states the allotment."""
+    env = os.environ.get("LOOMCORE_CPUS", "")
+    return int(env) if env.isdigit() and int(env) > 0 else (os.cpu_count() or 2)
+
+
+def cpu_lane_threads() -> int:
+    """The scheduler's own default (half the logical CPUs), from the allotment."""
+    return max(1, available_cpus() // 2)
+
+
 def detect_cpu() -> dict[str, Any]:
     try:
         # LOOMCORE_CPU_NAME names the chip when /proc/cpuinfo can't (Arm reports
-        # only the core): e.g. "Ampere Altra" on an Oracle A1 VM.
-        return parse_cpuinfo(Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace"),
+        # only the core; a sandbox may report "unknown").
+        info = parse_cpuinfo(Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace"),
                              os.environ.get("LOOMCORE_CPU_NAME") or None)
+        if os.environ.get("LOOMCORE_CPUS", "").isdigit():
+            info["logicalCpus"] = available_cpus()
+        return info
     except OSError:
         pass
     info: dict[str, Any] = {"arch": platform.machine().lower() or "unknown", "model": platform.processor() or "unknown CPU",
@@ -544,7 +559,7 @@ class LiveRuntime:
         # examples/graph_config.json, with absolute model paths and no log file
         # (the server reads the Logger's in-memory ring instead).
         config = {
-            "scheduler": {"cpu_threads": 0, "gpu_sim_threads": 2, "gpu_sim_fixed_overhead_ms": 1.5,
+            "scheduler": {"cpu_threads": cpu_lane_threads(), "gpu_sim_threads": 2, "gpu_sim_fixed_overhead_ms": 1.5,
                           "gpu_sim_bytes_per_ms": 250000.0},
             "nodes": [
                 node("mobilenet", "CPU", 5, 8, [], "mobilenetv2"),
@@ -911,7 +926,7 @@ class LiveRuntime:
                 "precisionPlanning": SCHEDULER_FLAGS["enable_precision_planning"],
                 "deadlineCancellation": SCHEDULER_FLAGS["enable_deadline_cancellation"],
                 "edfScoring": SCHEDULER_FLAGS["use_edf_scoring"],
-                "cpuThreads": max(1, (os.cpu_count() or 2) // 2), "gpuSimThreads": 2,
+                "cpuThreads": cpu_lane_threads(), "gpuSimThreads": 2,
                 "gpuSimOverheadMs": 1.5,
             },
             "samples": [{k: s[k] for k in ("id", "caption", "author", "licence", "source")} for s in self.samples],
